@@ -834,6 +834,38 @@ hr.sep { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
   .library-search { grid-template-columns: 1fr; }
 }
 
+.filter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.help-hint {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px; height: 15px;
+  border-radius: 50%;
+  background: var(--border);
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+  margin-left: 5px;
+  cursor: help;
+  font-family: 'JetBrains Mono', monospace;
+}
+.help-hint:hover { background: var(--gold); color: #0A0B14; }
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 20px;
+}
+@media (max-width: 600px) {
+  .detail-grid { grid-template-columns: 1fr; }
+}
+
 /* Registration view */
 .reg-container {
   max-width: 680px;
@@ -961,6 +993,18 @@ create table if not exists cards (
   updated_at timestamptz default now()
 );
 
+-- Location library (global, shared across tournaments)
+create table if not exists locations (
+  carddefid text primary key,
+  cid int,
+  name text not null,
+  ability text,
+  flavor text,
+  art text,
+  status text,
+  updated_at timestamptz default now()
+);
+
 -- Row-level security: open read + write on the anon key.
 -- The TO UI is client-side PIN protected.
 -- For production hardening, replace with auth + scoped policies.
@@ -970,6 +1014,7 @@ alter table rounds enable row level security;
 alter table pairings enable row level security;
 alter table decks enable row level security;
 alter table cards enable row level security;
+alter table locations enable row level security;
 
 do $$ begin
   create policy "anon all tournaments" on tournaments for all using (true) with check (true);
@@ -978,6 +1023,7 @@ do $$ begin
   create policy "anon all pairings" on pairings for all using (true) with check (true);
   create policy "anon all decks" on decks for all using (true) with check (true);
   create policy "anon all cards" on cards for all using (true) with check (true);
+  create policy "anon all locations" on locations for all using (true) with check (true);
 exception when duplicate_object then null; end $$;
 
 -- Enable Realtime for spectator mode (safe to re-run)
@@ -1016,6 +1062,7 @@ const state = {
   decks: [],
   cards: [],               // global card library
   cardsIndex: new Map(),   // carddefid -> card object, built from cards[]
+  locations: [],           // global location library
   needsSetup: false,       // supabase creds missing
   sidebarOpen: false,
   lastUpdated: null,
@@ -1172,22 +1219,49 @@ function renderCardTile(carddefid, opts = {}) {
   const card = lookupCard(carddefid);
   if (!card) {
     return `
-      <div class="card-tile unknown" title="Card not in library">
+      <div class="card-tile unknown" title="Card not in library — sync the Card Library">
         <img src="" alt="" />
-        <div class="cost-chip">?</div>
         <div class="name-strip">${esc(humanizeCardDefId(carddefid))}</div>
       </div>
     `;
   }
+  const titleParts = [card.name];
+  if (card.cost != null) titleParts.push(`Cost ${card.cost}`);
+  if (card.power != null) titleParts.push(`Power ${card.power}`);
+  if (card.ability) titleParts.push(card.ability.replace(/<[^>]*>/g, ''));
   return `
-    <div class="card-tile" title="${esc(card.name)} — Cost ${card.cost}, Power ${card.power}">
+    <div class="card-tile" title="${esc(titleParts.join(' · '))}">
       <img src="${esc(card.art || '')}" alt="${esc(card.name)}" loading="lazy"
            onerror="this.style.opacity='0.2'" />
-      <div class="cost-chip">${card.cost ?? '?'}</div>
-      <div class="power-chip">${card.power ?? '?'}</div>
-      <div class="name-strip">${esc(card.name)}</div>
+      ${opts.showName !== false ? `<div class="name-strip">${esc(card.name)}</div>` : ''}
     </div>
   `;
+}
+
+// Parse ability type from ability text
+function getAbilityType(card) {
+  const raw = (card?.ability || '').replace(/<[^>]*>/g, '').toLowerCase().trim();
+  if (!raw) return 'no-ability';
+  if (raw.includes('on reveal')) return 'on-reveal';
+  if (raw.includes('ongoing')) return 'ongoing';
+  if (raw.includes('end of turn') || raw.includes('at the end of')) return 'end-of-turn';
+  if (raw.includes('start of turn') || raw.includes('at the start')) return 'start-of-turn';
+  if (raw.includes('activate')) return 'activate';
+  return 'other';
+}
+
+// Collect all unique tags from loaded cards (for synergy filter)
+function collectCardTags() {
+  const counts = new Map();
+  state.cards.forEach(c => {
+    (c.tags || []).forEach(t => {
+      if (!t) return;
+      counts.set(t, (counts.get(t) || 0) + 1);
+    });
+  });
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([tag, count]) => ({ tag, count }));
 }
 
 function renderDeckPreview(cardDefIds, opts = {}) {
@@ -1545,6 +1619,89 @@ function parseCardsFromPasted(text) {
     const cards = Array.isArray(json) ? json : json?.success?.cards || json?.cards;
     if (!Array.isArray(cards)) return { ok: false, error: 'JSON missing cards array' };
     return { ok: true, cards };
+  } catch (err) {
+    return { ok: false, error: 'Invalid JSON: ' + err.message };
+  }
+}
+
+// ============================================================
+// LOCATION LIBRARY
+// ============================================================
+const MARVELSNAPZONE_LOCATIONS_URL = 'https://marvelsnapzone.com/getinfo/?searchtype=locations&searchcardstype=true';
+
+async function loadLocations() {
+  const { data, error } = await state.supabase
+    .from('locations')
+    .select('*')
+    .order('name', { ascending: true });
+  if (error) {
+    if (error.message.includes('does not exist') || error.code === '42P01') {
+      // Table missing; treat as empty silently (user re-runs migration)
+    }
+    state.locations = [];
+    return [];
+  }
+  state.locations = data || [];
+  return state.locations;
+}
+
+function compactLocationRecord(raw) {
+  // Locations in the marvelsnapzone API may use `carddefid` or `locationdefid`;
+  // fall back to cid if neither is present.
+  let id = raw.carddefid || raw.locationdefid;
+  if (!id && raw.cid) id = String(raw.cid);
+  return {
+    carddefid: id || null,
+    cid: raw.cid || null,
+    name: raw.name || '',
+    ability: raw.ability || '',
+    flavor: raw.flavor || '',
+    art: raw.art || '',
+    status: raw.status || null,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+async function upsertLocations(records) {
+  const chunkSize = 100;
+  let saved = 0;
+  for (let i = 0; i < records.length; i += chunkSize) {
+    const chunk = records.slice(i, i + chunkSize);
+    const { error } = await state.supabase
+      .from('locations')
+      .upsert(chunk, { onConflict: 'carddefid' });
+    if (error) {
+      toast(`Locations save failed: ${error.message}`, 'error');
+      return saved;
+    }
+    saved += chunk.length;
+  }
+  return saved;
+}
+
+async function fetchLocationsFromMarvelsnapzone() {
+  try {
+    const resp = await fetch(MARVELSNAPZONE_LOCATIONS_URL, {
+      headers: { 'Accept': 'application/json' },
+    });
+    if (!resp.ok) return { ok: false, error: `HTTP ${resp.status}` };
+    const json = await resp.json();
+    const locations = json?.success?.locations || json?.success?.cards;
+    if (!Array.isArray(locations)) return { ok: false, error: 'Unexpected JSON shape' };
+    return { ok: true, locations };
+  } catch (err) {
+    return { ok: false, error: err.message || 'Network/CORS error' };
+  }
+}
+
+function parseLocationsFromPasted(text) {
+  try {
+    const json = JSON.parse(text);
+    const locations = Array.isArray(json)
+      ? json
+      : json?.success?.locations || json?.success?.cards || json?.locations || json?.cards;
+    if (!Array.isArray(locations)) return { ok: false, error: 'JSON missing locations array' };
+    return { ok: true, locations };
   } catch (err) {
     return { ok: false, error: 'Invalid JSON: ' + err.message };
   }
@@ -2221,7 +2378,7 @@ function openNewTournamentModal() {
     <div class="form-row" style="margin-top:12px;">
       <div class="field"><label>Date</label><input type="date" id="nt-date" value="${today}" /></div>
       <div class="field">
-        <label>Format</label>
+        <label>Format <span class="help-hint" title="Swiss: everyone plays the same number of rounds, paired against opponents with similar records. Best for 8+ players. Single Elim: pure bracket, lose once and you're out.">?</span></label>
         <select id="nt-format">
           <option value="swiss">Swiss</option>
           <option value="single_elim">Single Elimination</option>
@@ -2231,24 +2388,30 @@ function openNewTournamentModal() {
       </div>
     </div>
     <div class="form-row">
-      <div class="field"><label>Rounds</label><input type="number" id="nt-rounds" value="4" min="1" max="20" /></div>
       <div class="field">
-        <label>Best of</label>
-        <select id="nt-bo"><option value="1">BO1</option><option value="3" selected>BO3</option><option value="5">BO5</option></select>
+        <label>Rounds <span class="help-hint" title="How many Swiss rounds before top cut. Common: 3 rounds for 8 players, 4 for 16, 5 for 32.">?</span></label>
+        <input type="number" id="nt-rounds" value="4" min="1" max="20" />
+      </div>
+      <div class="field">
+        <label>Best of <span class="help-hint" title="Games per match. BO3 is standard for Snap tournaments: first to 2 game wins takes the match.">?</span></label>
+        <select id="nt-bo"><option value="1">Best of 1 (1 game)</option><option value="3" selected>Best of 3 (2 game wins)</option><option value="5">Best of 5 (3 game wins)</option></select>
       </div>
     </div>
     <div class="form-row">
       <div class="field">
-        <label>Top Cut</label>
+        <label>Top Cut <span class="help-hint" title="After Swiss rounds, top N players advance to a single-elimination bracket. Leave at None for pure Swiss.">?</span></label>
         <select id="nt-topcut">
-          <option value="0">None</option>
-          <option value="2">Top 2 (Final)</option>
-          <option value="4">Top 4</option>
-          <option value="8" selected>Top 8</option>
+          <option value="0">None (pure Swiss)</option>
+          <option value="2">Top 2 (Final only)</option>
+          <option value="4">Top 4 (Semifinals)</option>
+          <option value="8" selected>Top 8 (Quarterfinals)</option>
           <option value="16">Top 16</option>
         </select>
       </div>
-      <div class="field"><label>Bye Cube Value</label><input type="number" id="nt-bye" value="8" min="0" max="99" /></div>
+      <div class="field">
+        <label>Bye Cube Value <span class="help-hint" title="When there's an odd number of players, one gets a free win (bye) each round. This sets how many cubes to credit them, used for tiebreakers. 8 is standard.">?</span></label>
+        <input type="number" id="nt-bye" value="8" min="0" max="99" />
+      </div>
     </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" data-close>Cancel</button>
@@ -3570,118 +3733,329 @@ function exportStandingsCsv() {
 }
 
 // ============================================================
-// UI: CARD LIBRARY
+// UI: CARD LIBRARY (Cards + Locations)
 // ============================================================
+let _cardLibraryTab = 'cards';  // cards | locations
 let _cardLibrarySearch = '';
-let _cardLibraryFilter = 'all'; // all, released, unreleased
+let _cardLibraryStatus = 'released';  // all | released | unreleased
+let _cardLibraryCost = 'any';  // any | 0 | 1 | 2 | 3 | 4 | 5 | 6+
+let _cardLibraryAbility = 'any';  // any | on-reveal | ongoing | end-of-turn | start-of-turn | activate | no-ability | other
+let _cardLibrarySynergy = 'any';  // any | <tag>
+let _cardLibrarySort = 'name-asc';  // name-asc | cost-asc | cost-desc | power-asc | power-desc
 
 function renderCardLibrary(main) {
   const lastSync = state.cards.length > 0
     ? state.cards.map(c => c.updated_at).sort().pop()
     : null;
 
+  // Filter cards based on current settings
   const filtered = state.cards.filter(c => {
-    if (_cardLibraryFilter === 'released' && c.status !== 'released') return false;
-    if (_cardLibraryFilter === 'unreleased' && c.status === 'released') return false;
+    if (_cardLibraryStatus === 'released' && c.status !== 'released') return false;
+    if (_cardLibraryStatus === 'unreleased' && c.status === 'released') return false;
+
+    if (_cardLibraryCost !== 'any') {
+      const cost = c.cost == null ? -1 : c.cost;
+      if (_cardLibraryCost === '6+') { if (cost < 6) return false; }
+      else { if (cost !== parseInt(_cardLibraryCost)) return false; }
+    }
+
+    if (_cardLibraryAbility !== 'any') {
+      if (getAbilityType(c) !== _cardLibraryAbility) return false;
+    }
+
+    if (_cardLibrarySynergy !== 'any') {
+      const tags = c.tags || [];
+      if (!tags.includes(_cardLibrarySynergy)) return false;
+    }
+
     if (_cardLibrarySearch) {
       const q = _cardLibrarySearch.toLowerCase();
-      return (c.name || '').toLowerCase().includes(q)
-        || (c.carddefid || '').toLowerCase().includes(q)
-        || (c.ability || '').toLowerCase().includes(q);
+      const hay = [
+        c.name, c.carddefid, c.ability, c.source,
+        ...(c.tags || [])
+      ].join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
     }
     return true;
   });
+
+  // Sort
+  filtered.sort((a, b) => {
+    switch (_cardLibrarySort) {
+      case 'cost-asc': return (a.cost ?? 99) - (b.cost ?? 99) || a.name.localeCompare(b.name);
+      case 'cost-desc': return (b.cost ?? -1) - (a.cost ?? -1) || a.name.localeCompare(b.name);
+      case 'power-asc': return (a.power ?? 999) - (b.power ?? 999) || a.name.localeCompare(b.name);
+      case 'power-desc': return (b.power ?? -999) - (a.power ?? -999) || a.name.localeCompare(b.name);
+      default: return a.name.localeCompare(b.name);
+    }
+  });
+
+  const synergyTags = collectCardTags();
+  const locCount = state.locations?.length || 0;
 
   main.innerHTML += `
     <div class="main-header">
       <div>
         <h1>Card Library</h1>
         <div class="muted">
-          ${state.cards.length} cards${lastSync ? ` · synced ${new Date(lastSync).toLocaleString()}` : ' · never synced'}
+          ${state.cards.length} cards${locCount ? `, ${locCount} locations` : ''}
+          ${lastSync ? ` · synced ${new Date(lastSync).toLocaleString()}` : ' · never synced'}
         </div>
       </div>
       <div class="row">
-        <button class="btn btn-primary" id="sync-cards">Sync from Marvelsnapzone</button>
-        <button class="btn" id="paste-cards">Paste JSON</button>
+        <button class="btn btn-primary" id="sync-cards">Sync All</button>
+        <button class="btn" id="paste-cards">Paste Cards JSON</button>
+        <button class="btn btn-ghost" id="paste-locations">Paste Locations JSON</button>
       </div>
     </div>
 
-    ${state.cards.length === 0 ? `
-      <div class="card">
-        <div class="empty-state">
-          <h3>No cards yet</h3>
-          <p>Sync the library so players can register decks with visual previews.</p>
-          <p class="muted" style="font-size:0.82rem; margin-top:12px;">
-            The app fetches from marvelsnapzone.com directly. If CORS blocks the request, use Paste JSON and curl it yourself:
-          </p>
-          <pre class="sql" style="text-align:left; margin-top:8px;">curl '${MARVELSNAPZONE_URL}' -H 'Accept: application/json' \\
-  -H 'User-Agent: Mozilla/5.0' &gt; cards.json</pre>
-        </div>
-      </div>
-    ` : `
-      <div class="library-search">
-        <input type="text" id="lib-search" placeholder="Search by name, CardDefId, or ability..." value="${esc(_cardLibrarySearch)}" />
-        <select id="lib-filter">
-          <option value="all" ${_cardLibraryFilter === 'all' ? 'selected' : ''}>All cards</option>
-          <option value="released" ${_cardLibraryFilter === 'released' ? 'selected' : ''}>Released</option>
-          <option value="unreleased" ${_cardLibraryFilter === 'unreleased' ? 'selected' : ''}>Unreleased</option>
-        </select>
-        <span class="muted" style="align-self:center; font-size:0.85rem;">${filtered.length} shown</span>
-      </div>
+    <div class="spectator-tabs" style="justify-content:flex-start; margin:0 0 20px; padding:0;">
+      <div class="spectator-tab ${_cardLibraryTab === 'cards' ? 'active' : ''}" data-lib-tab="cards">Cards (${state.cards.length})</div>
+      <div class="spectator-tab ${_cardLibraryTab === 'locations' ? 'active' : ''}" data-lib-tab="locations">Locations (${locCount})</div>
+    </div>
 
-      <div class="card-grid">
-        ${filtered.slice(0, 200).map(c => renderCardTile(c.carddefid)).join('')}
-      </div>
-      ${filtered.length > 200 ? `
-        <p class="muted center mt-md">Showing first 200. Refine the search to see specific cards.</p>
-      ` : ''}
-    `}
+    ${_cardLibraryTab === 'cards' ? renderCardsTabBody(filtered, synergyTags) : renderLocationsTabBody()}
   `;
 
-  el('sync-cards')?.addEventListener('click', syncCardsFromApi);
+  // Tabs
+  document.querySelectorAll('[data-lib-tab]').forEach(t => {
+    t.addEventListener('click', () => { _cardLibraryTab = t.dataset.libTab; renderRoute(); });
+  });
+
+  el('sync-cards')?.addEventListener('click', syncAllFromApi);
   el('paste-cards')?.addEventListener('click', openPasteCardsModal);
+  el('paste-locations')?.addEventListener('click', openPasteLocationsModal);
+
+  // Filters (cards tab only)
   el('lib-search')?.addEventListener('input', (e) => {
     _cardLibrarySearch = e.target.value;
-    // Debounce: just rerender
     clearTimeout(window._libSearchTimer);
     window._libSearchTimer = setTimeout(() => renderRoute(), 200);
   });
-  el('lib-filter')?.addEventListener('change', (e) => {
-    _cardLibraryFilter = e.target.value;
+  el('lib-status')?.addEventListener('change', (e) => { _cardLibraryStatus = e.target.value; renderRoute(); });
+  el('lib-cost')?.addEventListener('change', (e) => { _cardLibraryCost = e.target.value; renderRoute(); });
+  el('lib-ability')?.addEventListener('change', (e) => { _cardLibraryAbility = e.target.value; renderRoute(); });
+  el('lib-synergy')?.addEventListener('change', (e) => { _cardLibrarySynergy = e.target.value; renderRoute(); });
+  el('lib-sort')?.addEventListener('change', (e) => { _cardLibrarySort = e.target.value; renderRoute(); });
+  el('lib-reset')?.addEventListener('click', () => {
+    _cardLibrarySearch = '';
+    _cardLibraryCost = 'any';
+    _cardLibraryAbility = 'any';
+    _cardLibrarySynergy = 'any';
+    _cardLibrarySort = 'name-asc';
+    _cardLibraryStatus = 'released';
     renderRoute();
+  });
+
+  document.querySelectorAll('[data-card-detail]').forEach(t => {
+    t.addEventListener('click', () => openCardDetailModal(t.dataset.cardDetail, 'card'));
+  });
+  document.querySelectorAll('[data-location-detail]').forEach(t => {
+    t.addEventListener('click', () => openCardDetailModal(t.dataset.locationDetail, 'location'));
   });
 
   attachTournamentPicker();
 }
 
-async function syncCardsFromApi() {
-  toast('Fetching card data...', 'info');
-  const result = await fetchCardsFromMarvelsnapzone();
-  if (!result.ok) {
-    toast(`Fetch failed: ${result.error}. Use Paste JSON instead.`, 'error');
-    openPasteCardsModal();
-    return;
+function renderCardsTabBody(filtered, synergyTags) {
+  if (state.cards.length === 0) {
+    return `
+      <div class="card">
+        <div class="empty-state">
+          <h3>No cards yet</h3>
+          <p>Sync the library so players can register decks with visual previews.</p>
+          <p class="muted" style="font-size:0.82rem; margin-top:12px;">
+            The app fetches directly from marvelsnapzone.com. If CORS blocks it, paste the JSON manually.
+          </p>
+        </div>
+      </div>
+    `;
   }
-  const records = result.cards.map(compactCardRecord).filter(c => c.carddefid);
-  toast(`Got ${records.length} cards. Saving...`, 'info');
-  const saved = await upsertCards(records);
-  toast(`Saved ${saved} cards to library`, 'success');
-  await loadCards();
+
+  const costOpts = ['any', '0', '1', '2', '3', '4', '5', '6+'];
+  const abilityOpts = [
+    ['any', 'Any ability type'],
+    ['on-reveal', 'On Reveal'],
+    ['ongoing', 'Ongoing'],
+    ['end-of-turn', 'End of Turn'],
+    ['start-of-turn', 'Start of Turn'],
+    ['activate', 'Activate'],
+    ['no-ability', 'No ability'],
+    ['other', 'Other / Triggered'],
+  ];
+
+  return `
+    <div class="filter-grid">
+      <div class="field" style="grid-column: 1 / -1;">
+        <input type="text" id="lib-search" placeholder="Search name, ability, tag..." value="${esc(_cardLibrarySearch)}" />
+      </div>
+
+      <div class="field">
+        <label>Cost</label>
+        <select id="lib-cost">
+          ${costOpts.map(v => `<option value="${v}" ${_cardLibraryCost === v ? 'selected' : ''}>${v === 'any' ? 'Any cost' : v}</option>`).join('')}
+        </select>
+      </div>
+
+      <div class="field">
+        <label>Ability Type</label>
+        <select id="lib-ability">
+          ${abilityOpts.map(([v, l]) => `<option value="${v}" ${_cardLibraryAbility === v ? 'selected' : ''}>${l}</option>`).join('')}
+        </select>
+      </div>
+
+      <div class="field">
+        <label>Synergy / Tag</label>
+        <select id="lib-synergy">
+          <option value="any">Any tag</option>
+          ${synergyTags.map(t => `<option value="${esc(t.tag)}" ${_cardLibrarySynergy === t.tag ? 'selected' : ''}>${esc(t.tag)} (${t.count})</option>`).join('')}
+        </select>
+      </div>
+
+      <div class="field">
+        <label>Status</label>
+        <select id="lib-status">
+          <option value="all" ${_cardLibraryStatus === 'all' ? 'selected' : ''}>All</option>
+          <option value="released" ${_cardLibraryStatus === 'released' ? 'selected' : ''}>Released</option>
+          <option value="unreleased" ${_cardLibraryStatus === 'unreleased' ? 'selected' : ''}>Unreleased</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label>Sort</label>
+        <select id="lib-sort">
+          <option value="name-asc" ${_cardLibrarySort === 'name-asc' ? 'selected' : ''}>Name A→Z</option>
+          <option value="cost-asc" ${_cardLibrarySort === 'cost-asc' ? 'selected' : ''}>Cost low→high</option>
+          <option value="cost-desc" ${_cardLibrarySort === 'cost-desc' ? 'selected' : ''}>Cost high→low</option>
+          <option value="power-asc" ${_cardLibrarySort === 'power-asc' ? 'selected' : ''}>Power low→high</option>
+          <option value="power-desc" ${_cardLibrarySort === 'power-desc' ? 'selected' : ''}>Power high→low</option>
+        </select>
+      </div>
+
+      <div class="field" style="justify-content:flex-end;">
+        <label>&nbsp;</label>
+        <button class="btn btn-ghost" id="lib-reset">Reset filters</button>
+      </div>
+    </div>
+
+    <div class="row" style="margin-bottom:14px;">
+      <span class="muted" style="font-size:0.88rem;">${filtered.length} shown</span>
+    </div>
+
+    <div class="card-grid">
+      ${filtered.slice(0, 300).map(c => `
+        <div data-card-detail="${esc(c.carddefid)}">
+          ${renderCardTile(c.carddefid)}
+        </div>
+      `).join('')}
+    </div>
+    ${filtered.length > 300 ? `
+      <p class="muted center mt-md">Showing first 300. Narrow the search to see specific cards.</p>
+    ` : ''}
+  `;
+}
+
+function renderLocationsTabBody() {
+  const locations = state.locations || [];
+  if (locations.length === 0) {
+    return `
+      <div class="card">
+        <div class="empty-state">
+          <h3>No locations yet</h3>
+          <p>Sync the library with the button above, or paste locations JSON from <code>?searchtype=locations</code>.</p>
+        </div>
+      </div>
+    `;
+  }
+  const sorted = [...locations].sort((a, b) => a.name.localeCompare(b.name));
+  return `
+    <div class="card-grid">
+      ${sorted.map(loc => `
+        <div class="card-tile" data-location-detail="${esc(loc.carddefid)}" title="${esc(loc.name)}${loc.ability ? ' — ' + loc.ability.replace(/<[^>]*>/g, '') : ''}">
+          <img src="${esc(loc.art || '')}" alt="${esc(loc.name)}" loading="lazy" onerror="this.style.opacity='0.2'" />
+          <div class="name-strip">${esc(loc.name)}</div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function openCardDetailModal(carddefid, kind = 'card') {
+  const entity = kind === 'location'
+    ? (state.locations || []).find(l => l.carddefid === carddefid)
+    : lookupCard(carddefid);
+  if (!entity) return;
+  const abilityText = (entity.ability || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  openModal(`
+    <h2>${esc(entity.name)}</h2>
+    <div style="display:grid; grid-template-columns: 1fr 1.2fr; gap:20px; margin-top:12px;" class="detail-grid">
+      <div>
+        <img src="${esc(entity.art || '')}" alt="${esc(entity.name)}" style="width:100%; border-radius:8px; display:block;" onerror="this.style.opacity='0.2'" />
+      </div>
+      <div>
+        ${kind === 'card' ? `
+          <div class="row" style="gap:16px; margin-bottom:12px;">
+            <div><span class="muted" style="font-size:0.72rem; text-transform:uppercase;">Cost</span><div style="font-family:'Bebas Neue',sans-serif; font-size:1.6rem; color:var(--red);">${entity.cost ?? '—'}</div></div>
+            <div><span class="muted" style="font-size:0.72rem; text-transform:uppercase;">Power</span><div style="font-family:'Bebas Neue',sans-serif; font-size:1.6rem; color:var(--gold);">${entity.power ?? '—'}</div></div>
+            <div><span class="muted" style="font-size:0.72rem; text-transform:uppercase;">Type</span><div>${esc(entity.type || '—')}</div></div>
+          </div>
+        ` : ''}
+        <h4 style="margin-bottom:6px;">Ability</h4>
+        <p style="font-size:0.9rem; color:var(--text); margin-bottom:12px;">${abilityText ? esc(abilityText) : '<span class="muted">No ability</span>'}</p>
+        ${entity.source ? `<p style="font-size:0.8rem;"><span class="muted">Source:</span> ${esc(entity.source)}</p>` : ''}
+        ${entity.status ? `<p style="font-size:0.8rem;"><span class="muted">Status:</span> ${esc(entity.status)}</p>` : ''}
+        ${entity.tags && entity.tags.length ? `
+          <div style="margin-top:10px;">
+            ${entity.tags.map(t => `<span class="pill-tag">${esc(t)}</span>`).join('')}
+          </div>
+        ` : ''}
+        <div style="margin-top:10px; font-family:'JetBrains Mono',monospace; font-size:0.72rem; color:var(--dim);">
+          ${esc(entity.carddefid)}
+        </div>
+      </div>
+    </div>
+    <div class="modal-actions"><button class="btn" data-close>Close</button></div>
+  `);
+}
+
+// ----- Sync + paste flows -----
+
+async function syncAllFromApi() {
+  toast('Fetching cards...', 'info');
+  const cardsResult = await fetchCardsFromMarvelsnapzone();
+  if (cardsResult.ok) {
+    const recs = cardsResult.cards.map(compactCardRecord).filter(c => c.carddefid);
+    toast(`Got ${recs.length} cards. Saving...`, 'info');
+    await upsertCards(recs);
+    await loadCards();
+    toast('Cards synced', 'success');
+  } else {
+    toast(`Cards fetch failed (${cardsResult.error}). Use Paste JSON.`, 'error');
+  }
+
+  toast('Fetching locations...', 'info');
+  const locResult = await fetchLocationsFromMarvelsnapzone();
+  if (locResult.ok) {
+    const recs = locResult.locations.map(compactLocationRecord).filter(l => l.carddefid);
+    await upsertLocations(recs);
+    await loadLocations();
+    toast(`Saved ${recs.length} locations`, 'success');
+  } else {
+    toast(`Locations fetch failed (${locResult.error}). Use Paste Locations JSON.`, 'info');
+  }
+
   renderRoute();
 }
 
 function openPasteCardsModal() {
   openModal(`
-    <h2>Paste Card JSON</h2>
+    <h2>Paste Cards JSON</h2>
     <p class="muted" style="font-size:0.88rem; margin-bottom:12px;">
-      Paste the full response from <code>marvelsnapzone.com/getinfo/?searchtype=cards&amp;searchcardstype=true</code>, or an array of card objects.
+      Open <a href="${MARVELSNAPZONE_URL}" target="_blank">this URL</a> in a new tab, select all (Ctrl+A), copy (Ctrl+C), and paste below.
     </p>
-    <p class="muted" style="font-size:0.8rem; margin-bottom:12px;">Quick way:</p>
-    <pre class="sql" style="font-size:0.72rem;">curl '${MARVELSNAPZONE_URL}' \\
-  -H 'User-Agent: Mozilla/5.0' &gt; cards.json</pre>
     <div class="field" style="margin-top:12px;">
-      <label>JSON</label>
-      <textarea id="pc-json" rows="8" placeholder='{"success":{"cards":[...]}} or [{"carddefid":"..."}]'></textarea>
+      <label>Cards JSON</label>
+      <textarea id="pc-json" rows="8" placeholder='{"success":{"cards":[...]}}'></textarea>
     </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" data-close>Cancel</button>
@@ -3698,6 +4072,36 @@ function openPasteCardsModal() {
       toast(`Saved ${saved} cards`, 'success');
       b.remove();
       await loadCards();
+      renderRoute();
+    });
+  });
+}
+
+function openPasteLocationsModal() {
+  openModal(`
+    <h2>Paste Locations JSON</h2>
+    <p class="muted" style="font-size:0.88rem; margin-bottom:12px;">
+      Open <a href="${MARVELSNAPZONE_LOCATIONS_URL}" target="_blank">this URL</a> in a new tab, select all (Ctrl+A), copy (Ctrl+C), and paste below.
+    </p>
+    <div class="field" style="margin-top:12px;">
+      <label>Locations JSON</label>
+      <textarea id="pl-json" rows="8" placeholder='{"success":{"locations":[...]}}'></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" data-close>Cancel</button>
+      <button class="btn btn-primary" id="pl-save">Import</button>
+    </div>
+  `, (b) => {
+    b.querySelector('#pl-save').addEventListener('click', async () => {
+      const text = b.querySelector('#pl-json').value;
+      const r = parseLocationsFromPasted(text);
+      if (!r.ok) return toast(r.error, 'error');
+      const records = r.locations.map(compactLocationRecord).filter(l => l.carddefid);
+      toast(`Parsed ${records.length} locations. Saving...`, 'info');
+      const saved = await upsertLocations(records);
+      toast(`Saved ${saved} locations`, 'success');
+      b.remove();
+      await loadLocations();
       renderRoute();
     });
   });
@@ -4184,6 +4588,7 @@ async function boot() {
       await Promise.all([
         loadTournamentData(state.activeTournamentId),
         loadCards(),
+        loadLocations(),
       ]);
     } catch (err) {
       console.error(err);
@@ -4215,8 +4620,8 @@ async function boot() {
   }
   state.authed = true;
 
-  // Load tournaments and most recent active
-  await Promise.all([loadTournaments(), loadCards()]);
+  // Load tournaments, cards, and locations
+  await Promise.all([loadTournaments(), loadCards(), loadLocations()]);
   const saved = localStorage.getItem(LS_KEYS.ACTIVE_TOURNAMENT);
   if (saved && state.tournaments.find(t => t.id === saved)) {
     state.activeTournamentId = saved;
