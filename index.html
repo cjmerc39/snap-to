@@ -1,0 +1,4243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Snap TO — Marvel Snap Tournament Organizer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Rubik:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+<style>
+/* ============================================================
+   DESIGN TOKENS
+   ============================================================ */
+:root {
+  --bg: #0A0B14;
+  --bg-elev: #12141F;
+  --card: #171A28;
+  --card-hi: #1E2233;
+  --border: #272B3F;
+  --border-hi: #394063;
+  --text: #F0F2F8;
+  --muted: #8B92A8;
+  --dim: #5C6480;
+  --red: #E62429;
+  --red-hi: #FF3D42;
+  --red-dim: #8A1418;
+  --gold: #FFC233;
+  --gold-hi: #FFD666;
+  --gold-dim: #8A6A1A;
+  --green: #2EB872;
+  --blue: #3B82F6;
+  --radius: 10px;
+  --radius-sm: 6px;
+  --shadow: 0 4px 16px rgba(0,0,0,0.35);
+  --shadow-hi: 0 8px 32px rgba(0,0,0,0.5);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Rubik', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  background:
+    radial-gradient(ellipse at top left, rgba(230,36,41,0.08) 0%, transparent 40%),
+    radial-gradient(ellipse at bottom right, rgba(255,194,51,0.05) 0%, transparent 40%),
+    var(--bg);
+  min-height: 100vh;
+}
+
+h1, h2, h3, h4 {
+  font-family: 'Bebas Neue', sans-serif;
+  letter-spacing: 0.04em;
+  font-weight: 400;
+  line-height: 1.1;
+}
+h1 { font-size: 2.2rem; }
+h2 { font-size: 1.6rem; }
+h3 { font-size: 1.25rem; }
+h4 { font-size: 1.05rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+
+code, .mono { font-family: 'JetBrains Mono', monospace; font-size: 0.9em; }
+
+a { color: var(--gold); text-decoration: none; }
+a:hover { color: var(--gold-hi); }
+
+/* ============================================================
+   LAYOUT
+   ============================================================ */
+.app-shell {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  min-height: 100vh;
+}
+
+.sidebar {
+  background: var(--bg-elev);
+  border-right: 1px solid var(--border);
+  padding: 24px 0;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.brand {
+  padding: 0 24px 24px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 16px;
+}
+.brand-title {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 2rem;
+  letter-spacing: 0.06em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.brand-title .accent { color: var(--red); }
+.brand-sub {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.nav { flex: 1; padding: 0 12px; }
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  color: var(--muted);
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+  cursor: pointer;
+  font-size: 0.92rem;
+  letter-spacing: 0.02em;
+  user-select: none;
+  transition: background 0.12s, color 0.12s;
+}
+.nav-item:hover { background: var(--card); color: var(--text); }
+.nav-item.active {
+  background: linear-gradient(90deg, rgba(230,36,41,0.18), rgba(230,36,41,0.02));
+  color: var(--text);
+  border-left: 3px solid var(--red);
+  padding-left: 11px;
+}
+.nav-item .icon { width: 18px; text-align: center; font-weight: 700; color: var(--red); opacity: 0.85; }
+
+.sidebar-footer {
+  padding: 16px 24px;
+  border-top: 1px solid var(--border);
+  font-size: 0.75rem;
+  color: var(--dim);
+}
+
+.main {
+  padding: 32px 40px 80px;
+  max-width: 1400px;
+  width: 100%;
+}
+
+.main-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 28px;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.tournament-picker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.tournament-picker select {
+  min-width: 220px;
+}
+
+/* Mobile hamburger */
+.mobile-header {
+  display: none;
+  padding: 16px 20px;
+  background: var(--bg-elev);
+  border-bottom: 1px solid var(--border);
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 90;
+}
+.hamburger {
+  width: 40px; height: 40px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 18px;
+}
+
+@media (max-width: 900px) {
+  .app-shell { grid-template-columns: 1fr; }
+  .sidebar {
+    position: fixed;
+    top: 0; left: 0;
+    width: 280px;
+    height: 100vh;
+    z-index: 100;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+  }
+  .sidebar.open { transform: translateX(0); }
+  .mobile-header { display: flex; }
+  .main { padding: 20px 16px 60px; }
+  .sidebar-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 99;
+  }
+  .sidebar-backdrop.open { display: block; }
+}
+
+/* ============================================================
+   COMPONENTS: BUTTONS, INPUTS, CARDS
+   ============================================================ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.12s;
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.btn:hover { background: var(--card-hi); border-color: var(--border-hi); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-primary {
+  background: var(--red);
+  border-color: var(--red);
+  color: #fff;
+}
+.btn-primary:hover { background: var(--red-hi); border-color: var(--red-hi); }
+.btn-gold {
+  background: var(--gold);
+  border-color: var(--gold);
+  color: #0A0B14;
+}
+.btn-gold:hover { background: var(--gold-hi); border-color: var(--gold-hi); }
+.btn-ghost { background: transparent; }
+.btn-ghost:hover { background: var(--card); }
+.btn-danger { color: var(--red-hi); border-color: var(--red-dim); }
+.btn-danger:hover { background: rgba(230,36,41,0.12); border-color: var(--red); }
+.btn-sm { padding: 6px 10px; font-size: 0.78rem; }
+.btn-xs { padding: 4px 8px; font-size: 0.72rem; }
+
+input[type="text"], input[type="number"], input[type="date"], input[type="password"], select, textarea {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.92rem;
+  transition: border-color 0.12s, background 0.12s;
+}
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--red);
+  background: var(--card);
+}
+label {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 6px;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.field { display: flex; flex-direction: column; }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  box-shadow: var(--shadow);
+}
+.card + .card { margin-top: 20px; }
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.card-title { font-family: 'Bebas Neue', sans-serif; font-size: 1.5rem; letter-spacing: 0.04em; }
+
+/* ============================================================
+   STAT CHIPS / BADGES
+   ============================================================ */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.stat {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  position: relative;
+  overflow: hidden;
+}
+.stat::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; width: 3px; height: 100%;
+  background: var(--red);
+}
+.stat.gold::before { background: var(--gold); }
+.stat.green::before { background: var(--green); }
+.stat-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.stat-value {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 2rem;
+  letter-spacing: 0.02em;
+}
+.stat-sub { font-size: 0.8rem; color: var(--muted); margin-top: 4px; }
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  background: var(--border);
+  color: var(--text);
+}
+.badge.red { background: rgba(230,36,41,0.2); color: var(--red-hi); }
+.badge.gold { background: rgba(255,194,51,0.18); color: var(--gold); }
+.badge.green { background: rgba(46,184,114,0.2); color: var(--green); }
+.badge.muted { background: var(--bg-elev); color: var(--muted); }
+
+/* ============================================================
+   TABLES
+   ============================================================ */
+.table-wrap { overflow-x: auto; }
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+th {
+  text-align: left;
+  padding: 10px 12px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+td {
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: rgba(255,255,255,0.02); }
+
+.rank-1 { color: var(--gold); font-weight: 700; }
+.rank-2, .rank-3 { color: var(--gold-hi); }
+
+/* ============================================================
+   PAIRINGS
+   ============================================================ */
+.pairing {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 20px;
+  margin-bottom: 12px;
+  display: grid;
+  grid-template-columns: 60px 1fr auto;
+  gap: 20px;
+  align-items: center;
+}
+.pairing.complete { border-color: var(--green); border-left: 3px solid var(--green); }
+.pairing.pending { border-left: 3px solid var(--gold); }
+.pairing.bye { border-left: 3px solid var(--dim); opacity: 0.85; }
+
+.table-num {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 2.2rem;
+  color: var(--red);
+  text-align: center;
+  line-height: 1;
+}
+.pairing-players {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 12px;
+  align-items: center;
+}
+.pairing-player {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.pairing-player .name { font-weight: 600; font-size: 1.05rem; }
+.pairing-player .record { font-size: 0.78rem; color: var(--muted); }
+.pairing-player.right { text-align: right; align-items: flex-end; }
+.pairing-vs {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 1.4rem;
+  color: var(--dim);
+  letter-spacing: 0.1em;
+}
+.pairing-result {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 1.6rem;
+  color: var(--gold);
+  letter-spacing: 0.04em;
+}
+
+@media (max-width: 700px) {
+  .pairing { grid-template-columns: 1fr; gap: 12px; }
+  .pairing-players { grid-template-columns: 1fr; text-align: left !important; }
+  .pairing-player.right { text-align: left; align-items: flex-start; }
+  .pairing-vs { text-align: center; }
+}
+
+/* ============================================================
+   BRACKET
+   ============================================================ */
+.bracket {
+  display: flex;
+  gap: 40px;
+  overflow-x: auto;
+  padding: 20px 0;
+}
+.bracket-round {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  gap: 16px;
+  min-width: 220px;
+}
+.bracket-match {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  min-width: 220px;
+}
+.bracket-match.complete { border-color: var(--green); }
+.bracket-slot {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  font-size: 0.9rem;
+}
+.bracket-slot + .bracket-slot { border-top: 1px dashed var(--border); }
+.bracket-slot.winner { color: var(--gold); font-weight: 700; }
+.bracket-slot.empty { color: var(--dim); font-style: italic; }
+.bracket-round-label {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 0.9rem;
+  letter-spacing: 0.16em;
+  color: var(--muted);
+  text-align: center;
+  margin-bottom: 8px;
+}
+
+/* ============================================================
+   MODAL / DIALOG
+   ============================================================ */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  padding: 20px;
+}
+.modal {
+  background: var(--card);
+  border: 1px solid var(--border-hi);
+  border-radius: var(--radius);
+  padding: 28px;
+  max-width: 600px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: var(--shadow-hi);
+}
+.modal h2 { margin-bottom: 16px; }
+.modal-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  margin-top: 24px;
+  flex-wrap: wrap;
+}
+
+/* ============================================================
+   TOAST
+   ============================================================ */
+.toast-container {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 300;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 400px;
+}
+.toast {
+  background: var(--card);
+  border-left: 4px solid var(--red);
+  padding: 12px 18px;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-hi);
+  animation: slideIn 0.2s;
+  font-size: 0.88rem;
+}
+.toast.success { border-left-color: var(--green); }
+.toast.error { border-left-color: var(--red); }
+.toast.info { border-left-color: var(--gold); }
+@keyframes slideIn {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+/* ============================================================
+   MISC UTILITIES
+   ============================================================ */
+.row { display: flex; gap: 12px; align-items: center; }
+.row-between { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.gap-sm { gap: 8px; }
+.muted { color: var(--muted); }
+.dim { color: var(--dim); }
+.center { text-align: center; }
+.mt-md { margin-top: 16px; }
+.mt-lg { margin-top: 24px; }
+.mb-md { margin-bottom: 16px; }
+.empty-state {
+  text-align: center;
+  padding: 48px 24px;
+  color: var(--muted);
+}
+.empty-state h3 { color: var(--text); margin-bottom: 8px; }
+
+.copy-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8rem;
+}
+.copy-link .url { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+
+pre.sql {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 16px;
+  overflow-x: auto;
+  font-size: 0.8rem;
+  font-family: 'JetBrains Mono', monospace;
+  white-space: pre;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+hr.sep { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+
+.checkbox-row {
+  display: flex; align-items: center; gap: 8px;
+  cursor: pointer; user-select: none;
+}
+.checkbox-row input { width: auto; }
+
+.game-row {
+  display: grid;
+  grid-template-columns: 60px 1fr 1fr auto;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.game-row .label { font-size: 0.85rem; color: var(--muted); }
+
+/* Spectator-specific */
+.spectator-header {
+  text-align: center;
+  padding: 32px 20px 24px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 24px;
+  background: var(--bg-elev);
+}
+.spectator-header h1 {
+  font-size: 3rem;
+  margin-bottom: 4px;
+}
+.spectator-header .meta {
+  color: var(--muted);
+  font-size: 0.9rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.spectator-tabs {
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+  margin: 16px 0;
+  flex-wrap: wrap;
+}
+.spectator-tab {
+  padding: 10px 18px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 1rem;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  color: var(--muted);
+}
+.spectator-tab.active {
+  background: var(--red);
+  color: #fff;
+  border-color: var(--red);
+}
+
+.live-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background: var(--green);
+  border-radius: 50%;
+  margin-right: 6px;
+  animation: pulse 1.5s infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* ============================================================
+   CARDS & DECK PREVIEW
+   ============================================================ */
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 12px;
+}
+.card-tile {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  position: relative;
+  transition: transform 0.12s, border-color 0.12s;
+  cursor: pointer;
+}
+.card-tile:hover {
+  transform: translateY(-2px);
+  border-color: var(--gold);
+}
+.card-tile.empty {
+  aspect-ratio: 2 / 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--dim);
+  border-style: dashed;
+  cursor: default;
+}
+.card-tile.empty:hover { transform: none; border-color: var(--border); }
+.card-tile img {
+  width: 100%;
+  display: block;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  background: var(--bg);
+}
+.card-tile .cost-chip {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: var(--red);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 1.1rem;
+  border: 2px solid #fff;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.4);
+}
+.card-tile .power-chip {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 6px;
+  border-radius: 14px;
+  background: var(--gold);
+  color: #0A0B14;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 1rem;
+  border: 2px solid #fff;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.4);
+}
+.card-tile .name-strip {
+  background: rgba(10,11,20,0.92);
+  padding: 6px 8px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-top: 1px solid var(--border);
+}
+.card-tile.unknown {
+  border-color: var(--red-dim);
+}
+.card-tile.unknown img { opacity: 0.3; }
+
+.deck-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+}
+@media (max-width: 700px) {
+  .deck-grid { grid-template-columns: repeat(4, 1fr); }
+}
+@media (max-width: 500px) {
+  .deck-grid { grid-template-columns: repeat(3, 1fr); }
+}
+
+.deck-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+.deck-stat {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+}
+.deck-stat-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+.deck-stat-value {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 1.4rem;
+  margin-top: 2px;
+}
+
+.cost-curve {
+  display: flex;
+  gap: 3px;
+  align-items: end;
+  height: 48px;
+  margin-top: 8px;
+}
+.cost-curve-bar {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+.cost-curve-bar .bar {
+  width: 100%;
+  background: var(--red);
+  border-radius: 2px 2px 0 0;
+  min-height: 2px;
+}
+
+.library-search {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+@media (max-width: 700px) {
+  .library-search { grid-template-columns: 1fr; }
+}
+
+/* Registration view */
+.reg-container {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 40px 20px 80px;
+}
+.reg-header {
+  text-align: center;
+  margin-bottom: 32px;
+}
+.reg-header h1 { font-size: 2.6rem; margin-bottom: 6px; }
+.reg-header .meta { color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; font-size: 0.8rem; }
+
+.deck-code-input {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.85rem;
+}
+
+.pill-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  background: var(--border);
+  color: var(--muted);
+  border-radius: 10px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  margin-right: 4px;
+}
+
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="modal-root"></div>
+<div class="toast-container" id="toast-root"></div>
+
+<script type="module">
+// ============================================================
+// IMPORTS
+// ============================================================
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+// ============================================================
+// CONSTANTS
+// ============================================================
+const LS_KEYS = {
+  SUPABASE_URL: 'snapto_supabase_url',
+  SUPABASE_KEY: 'snapto_supabase_key',
+  PIN_HASH: 'snapto_pin_hash',
+  ACTIVE_TOURNAMENT: 'snapto_active_tournament',
+  UI_PREFS: 'snapto_ui_prefs',
+  AUTHED: 'snapto_authed_session',
+};
+
+const SQL_MIGRATION = `-- Snap TO: run this once in your Supabase project's SQL Editor
+-- (Dashboard > SQL Editor > New Query)
+
+create table if not exists tournaments (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  date date,
+  format text not null default 'swiss',
+  config jsonb not null default '{}'::jsonb,
+  status text not null default 'setup',
+  created_at timestamptz default now()
+);
+
+create table if not exists players (
+  id uuid primary key default gen_random_uuid(),
+  tournament_id uuid references tournaments(id) on delete cascade,
+  name text not null,
+  alias text,
+  seed int,
+  stats jsonb default '{}'::jsonb,
+  checked_in boolean default false,
+  dropped boolean default false,
+  created_at timestamptz default now()
+);
+
+create table if not exists rounds (
+  id uuid primary key default gen_random_uuid(),
+  tournament_id uuid references tournaments(id) on delete cascade,
+  round_number int not null,
+  status text not null default 'pending',
+  finalized_at timestamptz,
+  created_at timestamptz default now()
+);
+
+create table if not exists pairings (
+  id uuid primary key default gen_random_uuid(),
+  round_id uuid references rounds(id) on delete cascade,
+  player1_id uuid references players(id) on delete set null,
+  player2_id uuid references players(id) on delete set null,
+  result jsonb default '{}'::jsonb,
+  is_bye boolean default false,
+  table_number int,
+  bracket_stage text,
+  created_at timestamptz default now()
+);
+
+create table if not exists decks (
+  id uuid primary key default gen_random_uuid(),
+  player_id uuid references players(id) on delete cascade,
+  tournament_id uuid references tournaments(id) on delete cascade,
+  deck_name text,
+  cards jsonb default '[]'::jsonb,
+  revealed boolean default false,
+  created_at timestamptz default now()
+);
+
+-- Card library (global, shared across tournaments)
+create table if not exists cards (
+  carddefid text primary key,
+  cid int,
+  name text not null,
+  cost int,
+  power int,
+  type text,
+  ability text,
+  art text,
+  source text,
+  status text,
+  tags jsonb default '[]'::jsonb,
+  updated_at timestamptz default now()
+);
+
+-- Row-level security: open read + write on the anon key.
+-- The TO UI is client-side PIN protected.
+-- For production hardening, replace with auth + scoped policies.
+alter table tournaments enable row level security;
+alter table players enable row level security;
+alter table rounds enable row level security;
+alter table pairings enable row level security;
+alter table decks enable row level security;
+alter table cards enable row level security;
+
+do $$ begin
+  create policy "anon all tournaments" on tournaments for all using (true) with check (true);
+  create policy "anon all players" on players for all using (true) with check (true);
+  create policy "anon all rounds" on rounds for all using (true) with check (true);
+  create policy "anon all pairings" on pairings for all using (true) with check (true);
+  create policy "anon all decks" on decks for all using (true) with check (true);
+  create policy "anon all cards" on cards for all using (true) with check (true);
+exception when duplicate_object then null; end $$;
+
+-- Enable Realtime for spectator mode (safe to re-run)
+do $$ begin
+  alter publication supabase_realtime add table tournaments;
+exception when duplicate_object then null; end $$;
+do $$ begin
+  alter publication supabase_realtime add table players;
+exception when duplicate_object then null; end $$;
+do $$ begin
+  alter publication supabase_realtime add table rounds;
+exception when duplicate_object then null; end $$;
+do $$ begin
+  alter publication supabase_realtime add table pairings;
+exception when duplicate_object then null; end $$;
+do $$ begin
+  alter publication supabase_realtime add table decks;
+exception when duplicate_object then null; end $$;
+`;
+
+// ============================================================
+// STATE
+// ============================================================
+const state = {
+  mode: 'to',              // 'to' | 'spectator' | 'register'
+  authed: false,
+  route: 'dashboard',      // dashboard | players | setup | pairings | standings | bracket | decks | cards
+  specRoute: 'standings',  // standings | pairings | bracket
+  supabase: null,
+  tournaments: [],
+  activeTournamentId: null,
+  activeTournament: null,
+  players: [],
+  rounds: [],
+  pairings: [],
+  decks: [],
+  cards: [],               // global card library
+  cardsIndex: new Map(),   // carddefid -> card object, built from cards[]
+  needsSetup: false,       // supabase creds missing
+  sidebarOpen: false,
+  lastUpdated: null,
+  realtimeChannel: null,
+};
+
+// ============================================================
+// UTILITIES
+// ============================================================
+function el(id) { return document.getElementById(id); }
+
+function esc(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+async function sha256(text) {
+  const buf = new TextEncoder().encode(text);
+  const hash = await crypto.subtle.digest('SHA-256', buf);
+  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function uid() {
+  return crypto.randomUUID();
+}
+
+function toast(msg, variant = 'info') {
+  const root = el('toast-root');
+  const t = document.createElement('div');
+  t.className = `toast ${variant}`;
+  t.textContent = msg;
+  root.appendChild(t);
+  setTimeout(() => {
+    t.style.transition = 'opacity 0.2s';
+    t.style.opacity = '0';
+    setTimeout(() => t.remove(), 200);
+  }, 3200);
+}
+
+function confirm(message, onConfirm, opts = {}) {
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+  backdrop.innerHTML = `
+    <div class="modal" style="max-width:440px;">
+      <h2>${esc(opts.title || 'Confirm')}</h2>
+      <p class="muted">${esc(message)}</p>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" data-act="cancel">Cancel</button>
+        <button class="btn ${opts.danger ? 'btn-danger' : 'btn-primary'}" data-act="ok">${esc(opts.okLabel || 'Confirm')}</button>
+      </div>
+    </div>`;
+  document.getElementById('modal-root').appendChild(backdrop);
+  backdrop.addEventListener('click', (e) => {
+    if (e.target === backdrop || e.target.dataset.act === 'cancel') backdrop.remove();
+    if (e.target.dataset.act === 'ok') { backdrop.remove(); onConfirm(); }
+  });
+}
+
+function openModal(html, onMount) {
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+  backdrop.innerHTML = `<div class="modal">${html}</div>`;
+  document.getElementById('modal-root').appendChild(backdrop);
+  backdrop.addEventListener('click', (e) => {
+    if (e.target === backdrop || e.target.dataset.close !== undefined) backdrop.remove();
+  });
+  if (onMount) onMount(backdrop);
+  return backdrop;
+}
+
+function copyToClipboard(text) {
+  navigator.clipboard.writeText(text).then(
+    () => toast('Copied to clipboard', 'success'),
+    () => toast('Copy failed — select and copy manually', 'error')
+  );
+}
+
+function fmtPct(n) {
+  if (n == null || isNaN(n)) return '—';
+  return (n * 100).toFixed(1) + '%';
+}
+
+function fmtCubeDiff(n) {
+  if (n == null) return '—';
+  return (n >= 0 ? '+' : '') + n;
+}
+
+// ============================================================
+// DECK CODES & CARD LIBRARY UTILITIES
+// ============================================================
+
+/**
+ * Decode a Marvel Snap deck code.
+ * Long format (pre/post all): base64 of {"Cards":[{"CardDefId":"..."}],"Name":"..."}
+ * Short format (post-2024): abbreviated card names, not yet supported here.
+ * Returns { name, cardDefIds } on success, { error } on failure.
+ */
+function decodeDeckCode(raw) {
+  if (!raw) return { error: 'Empty' };
+  const code = raw.trim();
+  if (!code) return { error: 'Empty' };
+
+  // Long format: base64-encoded JSON, always starts with "eyJ" (that's `{"` in base64)
+  if (code.startsWith('eyJ')) {
+    try {
+      // Handle URL-safe base64 and pad if needed
+      let b64 = code.replace(/-/g, '+').replace(/_/g, '/');
+      while (b64.length % 4) b64 += '=';
+      const json = atob(b64);
+      const parsed = JSON.parse(json);
+      if (!parsed || !Array.isArray(parsed.Cards)) {
+        return { error: 'Decoded JSON is missing Cards array' };
+      }
+      const ids = parsed.Cards.map(c => c && c.CardDefId).filter(Boolean);
+      if (ids.length === 0) return { error: 'No cards found in code' };
+      return { name: parsed.Name || null, cardDefIds: ids, format: 'long' };
+    } catch (err) {
+      return { error: 'Invalid deck code: ' + err.message };
+    }
+  }
+
+  // Short format (abbreviated names). We don't decode these yet.
+  // Heuristic: looks like concatenated tokens with digits, no punctuation.
+  if (/^[A-Za-z0-9]+$/.test(code) && code.length < 120) {
+    return { error: 'Short-format deck code detected. Please paste the long format (starts with "eyJ"). You can get it from snap.fan, untapped.gg, or a converter.' };
+  }
+
+  return { error: 'Unrecognized deck code format' };
+}
+
+function buildCardsIndex() {
+  state.cardsIndex = new Map();
+  state.cards.forEach(c => {
+    if (c.carddefid) state.cardsIndex.set(c.carddefid, c);
+  });
+}
+
+function lookupCard(carddefid) {
+  return state.cardsIndex.get(carddefid) || null;
+}
+
+function humanizeCardDefId(carddefid) {
+  // Fallback display when card not in library yet: "AbsorbingMan" -> "Absorbing Man"
+  if (!carddefid) return '';
+  return carddefid.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/([A-Z])([A-Z][a-z])/g, '$1 $2');
+}
+
+function renderCardTile(carddefid, opts = {}) {
+  const card = lookupCard(carddefid);
+  if (!card) {
+    return `
+      <div class="card-tile unknown" title="Card not in library">
+        <img src="" alt="" />
+        <div class="cost-chip">?</div>
+        <div class="name-strip">${esc(humanizeCardDefId(carddefid))}</div>
+      </div>
+    `;
+  }
+  return `
+    <div class="card-tile" title="${esc(card.name)} — Cost ${card.cost}, Power ${card.power}">
+      <img src="${esc(card.art || '')}" alt="${esc(card.name)}" loading="lazy"
+           onerror="this.style.opacity='0.2'" />
+      <div class="cost-chip">${card.cost ?? '?'}</div>
+      <div class="power-chip">${card.power ?? '?'}</div>
+      <div class="name-strip">${esc(card.name)}</div>
+    </div>
+  `;
+}
+
+function renderDeckPreview(cardDefIds, opts = {}) {
+  const cards = cardDefIds.map(id => ({ id, card: lookupCard(id) }));
+  const known = cards.filter(c => c.card);
+  const unknownCount = cards.length - known.length;
+  const totalCost = known.reduce((a, b) => a + (b.card.cost || 0), 0);
+  const avgCost = known.length ? (totalCost / known.length).toFixed(1) : '—';
+  const totalPower = known.reduce((a, b) => a + (b.card.power || 0), 0);
+
+  // Cost curve 0..6+
+  const buckets = [0, 0, 0, 0, 0, 0, 0];
+  known.forEach(c => {
+    const cost = Math.min(6, Math.max(0, c.card.cost || 0));
+    buckets[cost]++;
+  });
+  const maxBucket = Math.max(1, ...buckets);
+
+  return `
+    <div class="deck-grid">
+      ${cardDefIds.map(id => renderCardTile(id)).join('')}
+      ${Array.from({ length: Math.max(0, 12 - cardDefIds.length) }, () =>
+        `<div class="card-tile empty">empty</div>`).join('')}
+    </div>
+    ${opts.stats !== false ? `
+      <div class="deck-stats">
+        <div class="deck-stat">
+          <div class="deck-stat-label">Cards</div>
+          <div class="deck-stat-value">${cardDefIds.length}/12</div>
+        </div>
+        <div class="deck-stat">
+          <div class="deck-stat-label">Avg Cost</div>
+          <div class="deck-stat-value">${avgCost}</div>
+        </div>
+        <div class="deck-stat">
+          <div class="deck-stat-label">Total Power</div>
+          <div class="deck-stat-value">${totalPower}</div>
+        </div>
+        ${unknownCount > 0 ? `
+          <div class="deck-stat" style="border-color:var(--red-dim);">
+            <div class="deck-stat-label" style="color:var(--red-hi);">Unknown</div>
+            <div class="deck-stat-value" style="color:var(--red-hi);">${unknownCount}</div>
+          </div>
+        ` : ''}
+      </div>
+      ${opts.curve !== false ? `
+        <div>
+          <div style="font-size:0.72rem; text-transform:uppercase; letter-spacing:0.1em; color:var(--muted); margin-top:14px; margin-bottom:4px;">Cost Curve</div>
+          <div class="cost-curve">
+            ${buckets.map((b, i) => `
+              <div class="cost-curve-bar">
+                <div style="font-size:0.68rem;">${b || ''}</div>
+                <div class="bar" style="height: ${Math.round((b / maxBucket) * 36)}px;"></div>
+                <div>${i === 6 ? '6+' : i}</div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      ` : ''}
+    ` : ''}
+  `;
+}
+
+// ============================================================
+// SUPABASE CLIENT
+// ============================================================
+function initSupabase() {
+  const url = localStorage.getItem(LS_KEYS.SUPABASE_URL);
+  const key = localStorage.getItem(LS_KEYS.SUPABASE_KEY);
+  if (!url || !key) {
+    state.needsSetup = true;
+    return false;
+  }
+  try {
+    state.supabase = createClient(url, key, {
+      realtime: { params: { eventsPerSecond: 5 } }
+    });
+    state.needsSetup = false;
+    return true;
+  } catch (err) {
+    console.error(err);
+    state.needsSetup = true;
+    return false;
+  }
+}
+
+async function checkConnection() {
+  try {
+    const { error } = await state.supabase.from('tournaments').select('id', { count: 'exact', head: true });
+    if (error) {
+      // Likely table doesn't exist yet
+      return { ok: false, error: error.message };
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+// ============================================================
+// DATA LAYER
+// ============================================================
+async function loadTournaments() {
+  const { data, error } = await state.supabase
+    .from('tournaments')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) { toast('Failed to load tournaments: ' + error.message, 'error'); return []; }
+  state.tournaments = data || [];
+  return state.tournaments;
+}
+
+async function loadTournamentData(tournamentId) {
+  if (!tournamentId) {
+    state.activeTournament = null;
+    state.players = []; state.rounds = []; state.pairings = []; state.decks = [];
+    return;
+  }
+  const sb = state.supabase;
+  const [t, p, r, d] = await Promise.all([
+    sb.from('tournaments').select('*').eq('id', tournamentId).single(),
+    sb.from('players').select('*').eq('tournament_id', tournamentId).order('seed', { ascending: true, nullsFirst: false }),
+    sb.from('rounds').select('*').eq('tournament_id', tournamentId).order('round_number', { ascending: true }),
+    sb.from('decks').select('*').eq('tournament_id', tournamentId),
+  ]);
+  if (t.error) { toast('Load tournament failed: ' + t.error.message, 'error'); return; }
+  state.activeTournament = t.data;
+  state.players = p.data || [];
+  state.rounds = r.data || [];
+  state.decks = d.data || [];
+
+  if (state.rounds.length > 0) {
+    const roundIds = state.rounds.map(r => r.id);
+    const pairs = await sb.from('pairings').select('*').in('round_id', roundIds);
+    state.pairings = pairs.data || [];
+  } else {
+    state.pairings = [];
+  }
+  state.lastUpdated = new Date();
+}
+
+async function createTournament(data) {
+  const { data: t, error } = await state.supabase
+    .from('tournaments')
+    .insert({
+      name: data.name,
+      date: data.date || null,
+      format: data.format,
+      config: data.config,
+      status: 'setup'
+    })
+    .select()
+    .single();
+  if (error) { toast('Create failed: ' + error.message, 'error'); return null; }
+  toast('Tournament created', 'success');
+  return t;
+}
+
+async function updateTournament(id, patch) {
+  const { error } = await state.supabase.from('tournaments').update(patch).eq('id', id);
+  if (error) { toast('Update failed: ' + error.message, 'error'); return false; }
+  return true;
+}
+
+async function deleteTournament(id) {
+  const { error } = await state.supabase.from('tournaments').delete().eq('id', id);
+  if (error) { toast('Delete failed: ' + error.message, 'error'); return false; }
+  toast('Tournament deleted', 'success');
+  return true;
+}
+
+async function addPlayer(tournamentId, data) {
+  const seed = data.seed || (state.players.length + 1);
+  const { data: p, error } = await state.supabase
+    .from('players')
+    .insert({ tournament_id: tournamentId, name: data.name, alias: data.alias, seed, checked_in: false })
+    .select()
+    .single();
+  if (error) { toast('Add player failed: ' + error.message, 'error'); return null; }
+  return p;
+}
+
+async function updatePlayer(id, patch) {
+  const { error } = await state.supabase.from('players').update(patch).eq('id', id);
+  if (error) { toast('Update failed: ' + error.message, 'error'); return false; }
+  return true;
+}
+
+async function removePlayer(id) {
+  const { error } = await state.supabase.from('players').delete().eq('id', id);
+  if (error) { toast('Remove failed: ' + error.message, 'error'); return false; }
+  return true;
+}
+
+async function createRound(tournamentId, roundNumber, bracketStage = null) {
+  const { data, error } = await state.supabase
+    .from('rounds')
+    .insert({ tournament_id: tournamentId, round_number: roundNumber, status: 'active' })
+    .select().single();
+  if (error) { toast('Round failed: ' + error.message, 'error'); return null; }
+  return data;
+}
+
+async function savePairings(roundId, pairings, bracketStage = null) {
+  const rows = pairings.map((p, i) => ({
+    round_id: roundId,
+    player1_id: p.player1_id,
+    player2_id: p.player2_id,
+    is_bye: p.is_bye,
+    table_number: i + 1,
+    bracket_stage: bracketStage,
+    result: p.is_bye ? { winner: 'player1', games: [], bye: true } : {}
+  }));
+  const { data, error } = await state.supabase.from('pairings').insert(rows).select();
+  if (error) { toast('Save pairings failed: ' + error.message, 'error'); return null; }
+  return data;
+}
+
+async function updatePairing(id, patch) {
+  const { error } = await state.supabase.from('pairings').update(patch).eq('id', id);
+  if (error) { toast('Update failed: ' + error.message, 'error'); return false; }
+  return true;
+}
+
+async function finalizeRound(roundId) {
+  const { error } = await state.supabase
+    .from('rounds')
+    .update({ status: 'finalized', finalized_at: new Date().toISOString() })
+    .eq('id', roundId);
+  if (error) { toast('Finalize failed: ' + error.message, 'error'); return false; }
+  return true;
+}
+
+async function reopenRound(roundId) {
+  const { error } = await state.supabase
+    .from('rounds')
+    .update({ status: 'active', finalized_at: null })
+    .eq('id', roundId);
+  if (error) { toast('Reopen failed: ' + error.message, 'error'); return false; }
+  return true;
+}
+
+async function saveDeck(tournamentId, playerId, deckName, cards) {
+  // Upsert style
+  const existing = state.decks.find(d => d.player_id === playerId);
+  if (existing) {
+    const { error } = await state.supabase
+      .from('decks')
+      .update({ deck_name: deckName, cards })
+      .eq('id', existing.id);
+    if (error) { toast('Save deck failed: ' + error.message, 'error'); return false; }
+  } else {
+    const { error } = await state.supabase
+      .from('decks')
+      .insert({ tournament_id: tournamentId, player_id: playerId, deck_name: deckName, cards, revealed: false });
+    if (error) { toast('Save deck failed: ' + error.message, 'error'); return false; }
+  }
+  return true;
+}
+
+async function revealAllDecks(tournamentId) {
+  const { error } = await state.supabase
+    .from('decks')
+    .update({ revealed: true })
+    .eq('tournament_id', tournamentId);
+  if (error) { toast('Reveal failed: ' + error.message, 'error'); return false; }
+  return true;
+}
+
+// ============================================================
+// CARD LIBRARY
+// ============================================================
+const MARVELSNAPZONE_URL = 'https://marvelsnapzone.com/getinfo/?searchtype=cards&searchcardstype=true';
+
+async function loadCards() {
+  const { data, error } = await state.supabase
+    .from('cards')
+    .select('*')
+    .order('name', { ascending: true });
+  if (error) {
+    if (error.message.includes('does not exist') || error.code === '42P01') {
+      toast('Cards table missing — re-run the SQL migration', 'error');
+    }
+    state.cards = [];
+    buildCardsIndex();
+    return [];
+  }
+  state.cards = data || [];
+  buildCardsIndex();
+  return state.cards;
+}
+
+/**
+ * Transform a raw marvelsnapzone API card into our compact card record.
+ */
+function compactCardRecord(raw) {
+  return {
+    carddefid: raw.carddefid,
+    cid: raw.cid || null,
+    name: raw.name || '',
+    cost: typeof raw.cost === 'number' ? raw.cost : (parseInt(raw.cost) || null),
+    power: typeof raw.power === 'number' ? raw.power : (parseInt(raw.power) || null),
+    type: raw.type || null,
+    ability: raw.ability || '',
+    art: raw.art || '',
+    source: raw.source || null,
+    status: raw.status || null,
+    tags: Array.isArray(raw.tags) ? raw.tags.map(t => t.tag).filter(Boolean) : [],
+    updated_at: new Date().toISOString(),
+  };
+}
+
+async function upsertCards(records) {
+  // Upsert in chunks of 100 to avoid payload issues
+  const chunkSize = 100;
+  let saved = 0;
+  for (let i = 0; i < records.length; i += chunkSize) {
+    const chunk = records.slice(i, i + chunkSize);
+    const { error } = await state.supabase
+      .from('cards')
+      .upsert(chunk, { onConflict: 'carddefid' });
+    if (error) {
+      toast(`Save failed at chunk ${i / chunkSize}: ${error.message}`, 'error');
+      return saved;
+    }
+    saved += chunk.length;
+  }
+  return saved;
+}
+
+/**
+ * Attempt to fetch the marvelsnapzone card JSON.
+ * Returns { ok, cards, error }.
+ * Browser CORS may block this. On failure, caller should show paste fallback.
+ */
+async function fetchCardsFromMarvelsnapzone() {
+  try {
+    const resp = await fetch(MARVELSNAPZONE_URL, {
+      headers: { 'Accept': 'application/json' },
+    });
+    if (!resp.ok) return { ok: false, error: `HTTP ${resp.status}` };
+    const json = await resp.json();
+    const cards = json?.success?.cards;
+    if (!Array.isArray(cards)) return { ok: false, error: 'Unexpected JSON shape' };
+    return { ok: true, cards };
+  } catch (err) {
+    return { ok: false, error: err.message || 'Network/CORS error' };
+  }
+}
+
+function parseCardsFromPasted(text) {
+  try {
+    const json = JSON.parse(text);
+    // Accept either the full API response shape or just an array of cards
+    const cards = Array.isArray(json) ? json : json?.success?.cards || json?.cards;
+    if (!Array.isArray(cards)) return { ok: false, error: 'JSON missing cards array' };
+    return { ok: true, cards };
+  } catch (err) {
+    return { ok: false, error: 'Invalid JSON: ' + err.message };
+  }
+}
+
+// ============================================================
+// PAIRING ENGINE — SWISS
+// ============================================================
+function computePlayerRecord(playerId) {
+  // Returns { matchPoints, cubesWon, cubesLost, opponents:[ids], hadBye, wins, losses, draws }
+  const finalizedRounds = state.rounds.filter(r => r.status === 'finalized').map(r => r.id);
+  const pairings = state.pairings.filter(p => finalizedRounds.includes(p.round_id));
+  const byeCubes = (state.activeTournament?.config?.byeCubeValue) ?? 8;
+  const rec = { matchPoints: 0, cubesWon: 0, cubesLost: 0, opponents: [], hadBye: false, wins: 0, losses: 0, draws: 0 };
+  pairings.forEach(p => {
+    if (p.is_bye && p.player1_id === playerId) {
+      rec.matchPoints += 3;
+      rec.wins++;
+      rec.hadBye = true;
+      rec.cubesWon += byeCubes;
+      return;
+    }
+    const r = p.result || {};
+    if (!r.winner) return;
+    if (p.player1_id === playerId) {
+      rec.opponents.push(p.player2_id);
+      rec.cubesWon += r.cubes1 || 0;
+      rec.cubesLost += r.cubes2 || 0;
+      if (r.winner === 'player1') { rec.matchPoints += 3; rec.wins++; }
+      else if (r.winner === 'player2') { rec.losses++; }
+      else if (r.winner === 'draw') { rec.matchPoints += 1; rec.draws++; }
+    } else if (p.player2_id === playerId) {
+      rec.opponents.push(p.player1_id);
+      rec.cubesWon += r.cubes2 || 0;
+      rec.cubesLost += r.cubes1 || 0;
+      if (r.winner === 'player2') { rec.matchPoints += 3; rec.wins++; }
+      else if (r.winner === 'player1') { rec.losses++; }
+      else if (r.winner === 'draw') { rec.matchPoints += 1; rec.draws++; }
+    }
+  });
+  return rec;
+}
+
+function pairSwiss() {
+  // Build active player list with records
+  const active = state.players
+    .filter(p => p.checked_in && !p.dropped)
+    .map(p => ({ ...p, rec: computePlayerRecord(p.id) }));
+
+  // Sort by match points desc, cube diff desc, random tiebreak via seed
+  active.sort((a, b) => {
+    if (b.rec.matchPoints !== a.rec.matchPoints) return b.rec.matchPoints - a.rec.matchPoints;
+    const aDiff = a.rec.cubesWon - a.rec.cubesLost;
+    const bDiff = b.rec.cubesWon - b.rec.cubesLost;
+    if (bDiff !== aDiff) return bDiff - aDiff;
+    return (a.seed || 0) - (b.seed || 0);
+  });
+
+  let byePlayer = null;
+  let pool = [...active];
+
+  if (pool.length % 2 === 1) {
+    // Lowest-ranked player with no previous bye
+    for (let i = pool.length - 1; i >= 0; i--) {
+      if (!pool[i].rec.hadBye) {
+        byePlayer = pool.splice(i, 1)[0];
+        break;
+      }
+    }
+    if (!byePlayer) byePlayer = pool.pop();
+  }
+
+  // Recursive pair with rematch avoidance
+  function pairRec(remaining) {
+    if (remaining.length === 0) return [];
+    const first = remaining[0];
+    const rest = remaining.slice(1);
+
+    // Try preferred opponents (no rematch), roughly by score proximity
+    for (let i = 0; i < rest.length; i++) {
+      const opp = rest[i];
+      if (first.rec.opponents.includes(opp.id)) continue;
+      const next = rest.filter((_, idx) => idx !== i);
+      const sub = pairRec(next);
+      if (sub !== null) {
+        return [{ player1_id: first.id, player2_id: opp.id, is_bye: false }, ...sub];
+      }
+    }
+    // Fallback: allow rematches
+    for (let i = 0; i < rest.length; i++) {
+      const opp = rest[i];
+      const next = rest.filter((_, idx) => idx !== i);
+      const sub = pairRec(next);
+      if (sub !== null) {
+        return [{ player1_id: first.id, player2_id: opp.id, is_bye: false }, ...sub];
+      }
+    }
+    return null;
+  }
+
+  const pairings = pairRec(pool) || [];
+  if (byePlayer) {
+    pairings.push({ player1_id: byePlayer.id, player2_id: null, is_bye: true });
+  }
+  return pairings;
+}
+
+// ============================================================
+// PAIRING ENGINE — SINGLE ELIM (TOP CUT)
+// ============================================================
+function buildTopCut(topN) {
+  // Takes top N from current standings (excluding dropped), pairs 1v8, 4v5, 3v6, 2v7 style
+  const standings = computeStandings().filter(s => !s.player.dropped);
+  const max = Math.min(topN, standings.length);
+  if (max < 2) return [];
+  // Round down to nearest power of 2
+  let size = 2;
+  while (size * 2 <= max) size *= 2;
+  const top = standings.slice(0, size);
+  const order = standardBracketOrder(size);
+  const pairings = [];
+  for (let i = 0; i < order.length; i += 2) {
+    const a = top[order[i] - 1];
+    const b = top[order[i + 1] - 1];
+    pairings.push({ player1_id: a.player.id, player2_id: b ? b.player.id : null, is_bye: !b });
+  }
+  return pairings;
+}
+
+function standardBracketOrder(n) {
+  // For n=4: [1,4,2,3]
+  // For n=8: [1,8,4,5,2,7,3,6]
+  // For n=16: [1,16,8,9,4,13,5,12,2,15,7,10,3,14,6,11]
+  let arr = [1, 2];
+  while (arr.length < n) {
+    const next = [];
+    const sum = arr.length * 2 + 1;
+    arr.forEach(x => {
+      next.push(x);
+      next.push(sum - x);
+    });
+    arr = next;
+  }
+  return arr.slice(0, n);
+}
+
+function buildNextElimRound(prevElimPairings) {
+  // Advance winners, pair sequentially
+  const winners = prevElimPairings.map(p => {
+    if (p.is_bye) return p.player1_id;
+    const r = p.result || {};
+    if (r.winner === 'player1') return p.player1_id;
+    if (r.winner === 'player2') return p.player2_id;
+    return null;
+  });
+  if (winners.some(w => !w)) return null;
+  if (winners.length <= 1) return []; // bracket complete, crown the winner
+  const pairings = [];
+  for (let i = 0; i < winners.length; i += 2) {
+    pairings.push({
+      player1_id: winners[i],
+      player2_id: winners[i + 1] || null,
+      is_bye: !winners[i + 1]
+    });
+  }
+  return pairings;
+}
+
+// ============================================================
+// STANDINGS ENGINE
+// ============================================================
+function computeStandings() {
+  const byeCubes = (state.activeTournament?.config?.byeCubeValue) ?? 8;
+  const finalizedRoundIds = state.rounds.filter(r => r.status === 'finalized').map(r => r.id);
+  const stats = new Map();
+
+  state.players.forEach(p => {
+    stats.set(p.id, {
+      player: p,
+      wins: 0, losses: 0, draws: 0, byes: 0,
+      matchPoints: 0,
+      cubesWon: 0, cubesLost: 0,
+      opponents: [],
+      matchWinPct: 0, omwp: 0, oomwp: 0
+    });
+  });
+
+  state.pairings.forEach(pair => {
+    if (!finalizedRoundIds.includes(pair.round_id)) return;
+    if (pair.is_bye) {
+      const s = stats.get(pair.player1_id);
+      if (s) { s.wins++; s.byes++; s.matchPoints += 3; s.cubesWon += byeCubes; }
+      return;
+    }
+    const r = pair.result || {};
+    if (!r.winner) return;
+    const p1 = stats.get(pair.player1_id);
+    const p2 = stats.get(pair.player2_id);
+    if (!p1 || !p2) return;
+    p1.opponents.push(pair.player2_id);
+    p2.opponents.push(pair.player1_id);
+    const c1 = r.cubes1 || 0;
+    const c2 = r.cubes2 || 0;
+    p1.cubesWon += c1; p1.cubesLost += c2;
+    p2.cubesWon += c2; p2.cubesLost += c1;
+    if (r.winner === 'player1') { p1.wins++; p1.matchPoints += 3; p2.losses++; }
+    else if (r.winner === 'player2') { p2.wins++; p2.matchPoints += 3; p1.losses++; }
+    else if (r.winner === 'draw') { p1.draws++; p2.draws++; p1.matchPoints += 1; p2.matchPoints += 1; }
+  });
+
+  stats.forEach(s => {
+    const total = s.wins + s.losses + s.draws;
+    s.matchWinPct = total === 0 ? 0 : Math.max(1/3, (s.wins + 0.5 * s.draws) / total);
+  });
+  stats.forEach(s => {
+    if (s.opponents.length === 0) return;
+    let sum = 0;
+    s.opponents.forEach(o => { const os = stats.get(o); if (os) sum += os.matchWinPct; });
+    s.omwp = sum / s.opponents.length;
+  });
+  stats.forEach(s => {
+    if (s.opponents.length === 0) return;
+    let sum = 0;
+    s.opponents.forEach(o => { const os = stats.get(o); if (os) sum += os.omwp; });
+    s.oomwp = sum / s.opponents.length;
+  });
+
+  const arr = Array.from(stats.values());
+  arr.sort((a, b) => {
+    if (b.matchPoints !== a.matchPoints) return b.matchPoints - a.matchPoints;
+    const ad = a.cubesWon - a.cubesLost;
+    const bd = b.cubesWon - b.cubesLost;
+    if (bd !== ad) return bd - ad;
+    if (b.omwp !== a.omwp) return b.omwp - a.omwp;
+    if (b.oomwp !== a.oomwp) return b.oomwp - a.oomwp;
+    return 0;
+  });
+  return arr.map((s, i) => ({ ...s, rank: i + 1, cubeDiff: s.cubesWon - s.cubesLost }));
+}
+
+// ============================================================
+// ROUTER
+// ============================================================
+function parseRoute() {
+  const url = new URL(window.location.href);
+  const view = url.searchParams.get('view');
+  const tid = url.searchParams.get('t');
+  if (view === 'public' && tid) {
+    state.mode = 'spectator';
+    state.activeTournamentId = tid;
+  } else if (view === 'register' && tid) {
+    state.mode = 'register';
+    state.activeTournamentId = tid;
+  } else {
+    state.mode = 'to';
+  }
+}
+
+function buildSpectatorUrl(tournamentId) {
+  const base = window.location.origin + window.location.pathname;
+  return `${base}?view=public&t=${tournamentId}`;
+}
+
+function buildRegistrationUrl(tournamentId) {
+  const base = window.location.origin + window.location.pathname;
+  return `${base}?view=register&t=${tournamentId}`;
+}
+
+// ============================================================
+// AUTH (PIN)
+// ============================================================
+function renderPinGate() {
+  const hasPin = !!localStorage.getItem(LS_KEYS.PIN_HASH);
+  const title = hasPin ? 'Enter TO PIN' : 'Set a TO PIN';
+  const sub = hasPin
+    ? 'This PIN protects the organizer dashboard on this device.'
+    : 'Choose a PIN (4+ characters). It will be hashed and stored locally on this device.';
+
+  el('app').innerHTML = `
+    <div style="min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px;">
+      <div class="card" style="max-width: 440px; width: 100%;">
+        <div style="text-align:center; margin-bottom:24px;">
+          <div class="brand-title" style="justify-content:center; font-size:2.4rem;">
+            SNAP<span class="accent">TO</span>
+          </div>
+          <div class="brand-sub">Tournament Organizer</div>
+        </div>
+        <h3 style="margin-bottom:6px;">${esc(title)}</h3>
+        <p class="muted" style="font-size:0.88rem; margin-bottom:16px;">${esc(sub)}</p>
+        <div class="field">
+          <label>PIN</label>
+          <input type="password" id="pin-input" placeholder="••••" autocomplete="off" autofocus />
+        </div>
+        ${!hasPin ? `
+        <div class="field" style="margin-top:12px;">
+          <label>Confirm PIN</label>
+          <input type="password" id="pin-confirm" placeholder="••••" autocomplete="off" />
+        </div>` : ''}
+        <button class="btn btn-primary" id="pin-submit" style="width:100%; margin-top:16px;">
+          ${hasPin ? 'Unlock' : 'Set PIN'}
+        </button>
+        ${hasPin ? `
+        <button class="btn btn-ghost btn-sm" id="pin-reset" style="width:100%; margin-top:8px;">
+          Forgot PIN — reset (clears local PIN only)
+        </button>` : ''}
+      </div>
+    </div>
+  `;
+
+  el('pin-submit').addEventListener('click', async () => {
+    const pin = el('pin-input').value.trim();
+    if (pin.length < 4) return toast('PIN must be 4+ characters', 'error');
+    const hash = await sha256(pin);
+    if (hasPin) {
+      const stored = localStorage.getItem(LS_KEYS.PIN_HASH);
+      if (hash !== stored) return toast('Incorrect PIN', 'error');
+      sessionStorage.setItem(LS_KEYS.AUTHED, '1');
+      state.authed = true;
+      boot();
+    } else {
+      const confirmPin = el('pin-confirm').value.trim();
+      if (pin !== confirmPin) return toast('PINs do not match', 'error');
+      localStorage.setItem(LS_KEYS.PIN_HASH, hash);
+      sessionStorage.setItem(LS_KEYS.AUTHED, '1');
+      state.authed = true;
+      toast('PIN set', 'success');
+      boot();
+    }
+  });
+
+  if (hasPin) {
+    el('pin-reset').addEventListener('click', () => {
+      confirm('Reset local PIN? This only clears the PIN on this device — tournament data in Supabase is unchanged.', () => {
+        localStorage.removeItem(LS_KEYS.PIN_HASH);
+        renderPinGate();
+      }, { danger: true, okLabel: 'Reset PIN' });
+    });
+  }
+  el('pin-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') el('pin-submit').click();
+  });
+}
+
+// ============================================================
+// SETUP VIEW — Supabase credentials
+// ============================================================
+function renderSetup() {
+  el('app').innerHTML = `
+    <div style="min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px;">
+      <div class="card" style="max-width: 640px; width: 100%;">
+        <div style="text-align:center; margin-bottom:24px;">
+          <div class="brand-title" style="justify-content:center; font-size:2.4rem;">
+            SNAP<span class="accent">TO</span>
+          </div>
+          <div class="brand-sub">Connect your Supabase project</div>
+        </div>
+
+        <h3>Step 1 — Create a free Supabase project</h3>
+        <p class="muted" style="font-size:0.9rem; margin-top:6px;">
+          Go to <a href="https://supabase.com" target="_blank">supabase.com</a>, create a project (free tier is plenty).
+          Once it's ready, open <strong>Project Settings → API</strong> to find your URL and anon key.
+        </p>
+
+        <hr class="sep" />
+
+        <h3>Step 2 — Run the schema</h3>
+        <p class="muted" style="font-size:0.9rem; margin-top:6px;">
+          Open the <strong>SQL Editor</strong> in Supabase, paste the migration below, and run it.
+        </p>
+        <button class="btn btn-sm" id="copy-sql" style="margin-top:8px;">Copy SQL</button>
+        <details style="margin-top:10px;">
+          <summary class="muted" style="cursor:pointer; font-size:0.85rem;">Show SQL</summary>
+          <pre class="sql" id="sql-block">${esc(SQL_MIGRATION)}</pre>
+        </details>
+
+        <hr class="sep" />
+
+        <h3>Step 3 — Paste your credentials</h3>
+        <div class="field" style="margin-top:12px;">
+          <label>Supabase URL</label>
+          <input type="text" id="sb-url" placeholder="https://xxxxx.supabase.co" />
+        </div>
+        <div class="field" style="margin-top:12px;">
+          <label>Anon / Public Key</label>
+          <input type="text" id="sb-key" placeholder="eyJhbGciOi..." />
+        </div>
+        <p class="muted" style="font-size:0.8rem; margin-top:12px;">
+          These are stored in this browser only. The anon key is safe to share with spectators — Supabase RLS (defined in the SQL above) controls access.
+        </p>
+
+        <button class="btn btn-primary" id="connect" style="width:100%; margin-top:20px;">Connect</button>
+      </div>
+    </div>
+  `;
+  el('copy-sql').addEventListener('click', () => copyToClipboard(SQL_MIGRATION));
+  el('connect').addEventListener('click', async () => {
+    const url = el('sb-url').value.trim();
+    const key = el('sb-key').value.trim();
+    if (!url || !key) return toast('Both fields required', 'error');
+    localStorage.setItem(LS_KEYS.SUPABASE_URL, url);
+    localStorage.setItem(LS_KEYS.SUPABASE_KEY, key);
+    if (!initSupabase()) return toast('Connection failed', 'error');
+    const check = await checkConnection();
+    if (!check.ok) {
+      toast('Connected, but schema check failed — did you run the SQL? (' + check.error + ')', 'error');
+      return;
+    }
+    toast('Connected to Supabase', 'success');
+    boot();
+  });
+}
+
+// ============================================================
+// UI: SHELL
+// ============================================================
+function renderShell() {
+  const isSpec = state.mode === 'spectator';
+  if (isSpec) return renderSpectatorShell();
+
+  const routes = [
+    { id: 'dashboard', label: 'Dashboard', icon: '◆' },
+    { id: 'setup', label: 'Tournament Setup', icon: '✦' },
+    { id: 'players', label: 'Players', icon: '◉' },
+    { id: 'pairings', label: 'Pairings', icon: '⚔' },
+    { id: 'standings', label: 'Standings', icon: '♛' },
+    { id: 'bracket', label: 'Bracket', icon: '⌬' },
+    { id: 'decks', label: 'Deck Registry', icon: '❖' },
+    { id: 'cards', label: 'Card Library', icon: '❏' },
+  ];
+
+  el('app').innerHTML = `
+    <div class="mobile-header">
+      <button class="hamburger" id="hamburger">≡</button>
+      <div class="brand-title" style="font-size:1.4rem;">SNAP<span class="accent">TO</span></div>
+      <div style="width:40px;"></div>
+    </div>
+    <div class="sidebar-backdrop ${state.sidebarOpen ? 'open' : ''}" id="sb-backdrop"></div>
+    <div class="app-shell">
+      <aside class="sidebar ${state.sidebarOpen ? 'open' : ''}" id="sidebar">
+        <div class="brand">
+          <div class="brand-title">SNAP<span class="accent">TO</span></div>
+          <div class="brand-sub">Tournament Organizer</div>
+        </div>
+        <nav class="nav">
+          ${routes.map(r => `
+            <div class="nav-item ${state.route === r.id ? 'active' : ''}" data-route="${r.id}">
+              <span class="icon">${r.icon}</span>
+              <span>${r.label}</span>
+            </div>
+          `).join('')}
+        </nav>
+        <div class="sidebar-footer">
+          <div style="margin-bottom:6px;">v1.0 · <a href="#" id="logout-link">Lock</a></div>
+          <div>Connected to Supabase</div>
+        </div>
+      </aside>
+      <main class="main" id="main"></main>
+    </div>
+  `;
+
+  document.querySelectorAll('.nav-item').forEach(n => {
+    n.addEventListener('click', () => {
+      state.route = n.dataset.route;
+      state.sidebarOpen = false;
+      renderShell();
+      renderRoute();
+    });
+  });
+  el('hamburger')?.addEventListener('click', () => {
+    state.sidebarOpen = !state.sidebarOpen;
+    renderShell();
+    renderRoute();
+  });
+  el('sb-backdrop')?.addEventListener('click', () => {
+    state.sidebarOpen = false;
+    renderShell();
+    renderRoute();
+  });
+  el('logout-link')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    sessionStorage.removeItem(LS_KEYS.AUTHED);
+    state.authed = false;
+    renderPinGate();
+  });
+}
+
+function renderRoute() {
+  if (state.mode === 'spectator') return renderSpectator();
+  const main = el('main');
+  if (!main) return;
+
+  // Tournament picker header (except dashboard, which has its own)
+  const header = state.route !== 'dashboard' ? renderTournamentPicker() : '';
+  main.innerHTML = header;
+
+  switch (state.route) {
+    case 'dashboard': renderDashboard(main); break;
+    case 'setup': renderTournamentSetup(main); break;
+    case 'players': renderPlayers(main); break;
+    case 'pairings': renderPairings(main); break;
+    case 'standings': renderStandings(main); break;
+    case 'bracket': renderBracket(main); break;
+    case 'decks': renderDecks(main); break;
+    case 'cards': renderCardLibrary(main); break;
+    default: renderDashboard(main);
+  }
+}
+
+function renderTournamentPicker() {
+  if (!state.tournaments.length) return '';
+  return `
+    <div class="main-header">
+      <div class="tournament-picker">
+        <label style="margin:0;">Active:</label>
+        <select id="t-picker">
+          ${state.tournaments.map(t => `
+            <option value="${t.id}" ${t.id === state.activeTournamentId ? 'selected' : ''}>
+              ${esc(t.name)} — ${esc(t.status)}
+            </option>
+          `).join('')}
+        </select>
+      </div>
+      ${state.activeTournamentId ? `
+        <button class="btn btn-sm" id="copy-spec-link">Copy Spectator Link</button>
+      ` : ''}
+    </div>
+  `;
+}
+
+function attachTournamentPicker() {
+  const picker = el('t-picker');
+  if (picker) {
+    picker.addEventListener('change', async (e) => {
+      state.activeTournamentId = e.target.value;
+      localStorage.setItem(LS_KEYS.ACTIVE_TOURNAMENT, state.activeTournamentId);
+      await loadTournamentData(state.activeTournamentId);
+      renderRoute();
+    });
+  }
+  const copy = el('copy-spec-link');
+  if (copy) {
+    copy.addEventListener('click', () => copyToClipboard(buildSpectatorUrl(state.activeTournamentId)));
+  }
+}
+
+// ============================================================
+// UI: DASHBOARD
+// ============================================================
+function renderDashboard(main) {
+  const t = state.activeTournament;
+  const activeRound = state.rounds.find(r => r.status === 'active');
+  const activeRoundPairings = activeRound ? state.pairings.filter(p => p.round_id === activeRound.id) : [];
+  const pending = activeRoundPairings.filter(p => !p.result?.winner && !p.is_bye).length;
+  const complete = activeRoundPairings.filter(p => p.result?.winner).length;
+
+  main.innerHTML += `
+    <div class="main-header">
+      <div>
+        <h1>Dashboard</h1>
+        <div class="muted">Snap Tournament Command Center</div>
+      </div>
+      <div class="row">
+        ${state.activeTournamentId ? `<button class="btn btn-sm" id="copy-spec-link">Copy Spectator Link</button>` : ''}
+        <button class="btn btn-primary" id="new-tournament">+ New Tournament</button>
+      </div>
+    </div>
+
+    ${!t ? `
+      <div class="card">
+        <div class="empty-state">
+          <h3>No tournament selected</h3>
+          <p>Create a new tournament to get started.</p>
+          <button class="btn btn-primary mt-md" id="new-tournament-2">+ New Tournament</button>
+        </div>
+      </div>
+    ` : `
+      <div class="stat-grid">
+        <div class="stat">
+          <div class="stat-label">Tournament</div>
+          <div class="stat-value">${esc(t.name)}</div>
+          <div class="stat-sub">${esc(t.format.toUpperCase())} · ${esc(t.status)}</div>
+        </div>
+        <div class="stat gold">
+          <div class="stat-label">Players</div>
+          <div class="stat-value">${state.players.length}</div>
+          <div class="stat-sub">${state.players.filter(p => p.checked_in).length} checked in · ${state.players.filter(p => p.dropped).length} dropped</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Current Round</div>
+          <div class="stat-value">${activeRound ? activeRound.round_number : '—'}</div>
+          <div class="stat-sub">of ${t.config?.rounds || '?'}</div>
+        </div>
+        <div class="stat green">
+          <div class="stat-label">Matches This Round</div>
+          <div class="stat-value">${complete}/${activeRoundPairings.length}</div>
+          <div class="stat-sub">${pending} pending</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><div class="card-title">Spectator Link</div></div>
+        <p class="muted" style="font-size:0.88rem; margin-bottom:12px;">
+          Share this URL with players. It shows live standings, pairings, and bracket. No login, no edit access.
+        </p>
+        <div class="copy-link">
+          <span class="url">${esc(buildSpectatorUrl(t.id))}</span>
+          <button class="btn btn-sm" id="copy-spec-dash">Copy</button>
+        </div>
+      </div>
+
+      ${t.config?.registrationOpen ? `
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Registration Link</div>
+            <span class="badge green">Open</span>
+          </div>
+          <p class="muted" style="font-size:0.88rem; margin-bottom:12px;">
+            Share this URL to let players self-register with a deck code. Manage in Tournament Setup.
+          </p>
+          <div class="copy-link">
+            <span class="url">${esc(buildRegistrationUrl(t.id))}</span>
+            <button class="btn btn-sm" id="copy-reg-dash">Copy</button>
+          </div>
+        </div>
+      ` : ''}
+
+      <div class="card">
+        <div class="card-header"><div class="card-title">Quick Actions</div></div>
+        <div class="row" style="flex-wrap:wrap;">
+          <button class="btn" data-jump="players">Manage Players</button>
+          <button class="btn" data-jump="pairings">View Pairings</button>
+          <button class="btn" data-jump="standings">Standings</button>
+          <button class="btn" data-jump="decks">Deck Registry</button>
+          <button class="btn" data-jump="cards">Card Library</button>
+          <button class="btn btn-ghost" id="export-json">Export JSON</button>
+          <button class="btn btn-ghost" id="export-csv">Standings CSV</button>
+          <button class="btn btn-danger" id="delete-tournament">Delete Tournament</button>
+        </div>
+      </div>
+    `}
+  `;
+
+  el('new-tournament')?.addEventListener('click', () => openNewTournamentModal());
+  el('new-tournament-2')?.addEventListener('click', () => openNewTournamentModal());
+  el('copy-spec-link')?.addEventListener('click', () => copyToClipboard(buildSpectatorUrl(state.activeTournamentId)));
+  el('copy-spec-dash')?.addEventListener('click', () => copyToClipboard(buildSpectatorUrl(state.activeTournamentId)));
+  el('copy-reg-dash')?.addEventListener('click', () => copyToClipboard(buildRegistrationUrl(state.activeTournamentId)));
+  document.querySelectorAll('[data-jump]').forEach(b => {
+    b.addEventListener('click', () => {
+      state.route = b.dataset.jump;
+      renderShell();
+      renderRoute();
+    });
+  });
+  el('export-json')?.addEventListener('click', exportJson);
+  el('export-csv')?.addEventListener('click', exportStandingsCsv);
+  el('delete-tournament')?.addEventListener('click', () => {
+    confirm(`Delete "${t.name}"? This removes all players, rounds, pairings, and decks.`, async () => {
+      await deleteTournament(t.id);
+      state.activeTournamentId = null;
+      localStorage.removeItem(LS_KEYS.ACTIVE_TOURNAMENT);
+      await loadTournaments();
+      await loadTournamentData(null);
+      renderRoute();
+    }, { danger: true, okLabel: 'Delete' });
+  });
+}
+
+function openNewTournamentModal() {
+  const today = new Date().toISOString().slice(0, 10);
+  openModal(`
+    <h2>New Tournament</h2>
+    <div class="field"><label>Name</label><input type="text" id="nt-name" placeholder="Friday Night Snap #1" /></div>
+    <div class="form-row" style="margin-top:12px;">
+      <div class="field"><label>Date</label><input type="date" id="nt-date" value="${today}" /></div>
+      <div class="field">
+        <label>Format</label>
+        <select id="nt-format">
+          <option value="swiss">Swiss</option>
+          <option value="single_elim">Single Elimination</option>
+          <option value="double_elim" disabled>Double Elim (soon)</option>
+          <option value="round_robin" disabled>Round Robin (soon)</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="field"><label>Rounds</label><input type="number" id="nt-rounds" value="4" min="1" max="20" /></div>
+      <div class="field">
+        <label>Best of</label>
+        <select id="nt-bo"><option value="1">BO1</option><option value="3" selected>BO3</option><option value="5">BO5</option></select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="field">
+        <label>Top Cut</label>
+        <select id="nt-topcut">
+          <option value="0">None</option>
+          <option value="2">Top 2 (Final)</option>
+          <option value="4">Top 4</option>
+          <option value="8" selected>Top 8</option>
+          <option value="16">Top 16</option>
+        </select>
+      </div>
+      <div class="field"><label>Bye Cube Value</label><input type="number" id="nt-bye" value="8" min="0" max="99" /></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" data-close>Cancel</button>
+      <button class="btn btn-primary" id="nt-create">Create</button>
+    </div>
+  `, (backdrop) => {
+    backdrop.querySelector('#nt-create').addEventListener('click', async () => {
+      const name = backdrop.querySelector('#nt-name').value.trim();
+      if (!name) return toast('Name required', 'error');
+      const config = {
+        rounds: parseInt(backdrop.querySelector('#nt-rounds').value) || 4,
+        bestOf: parseInt(backdrop.querySelector('#nt-bo').value) || 3,
+        topCut: parseInt(backdrop.querySelector('#nt-topcut').value) || 0,
+        byeCubeValue: parseInt(backdrop.querySelector('#nt-bye').value) || 8,
+      };
+      const t = await createTournament({
+        name,
+        date: backdrop.querySelector('#nt-date').value,
+        format: backdrop.querySelector('#nt-format').value,
+        config
+      });
+      if (!t) return;
+      backdrop.remove();
+      state.activeTournamentId = t.id;
+      localStorage.setItem(LS_KEYS.ACTIVE_TOURNAMENT, t.id);
+      await loadTournaments();
+      await loadTournamentData(t.id);
+      renderRoute();
+    });
+  });
+}
+
+// ============================================================
+// UI: TOURNAMENT SETUP
+// ============================================================
+function renderTournamentSetup(main) {
+  const t = state.activeTournament;
+  if (!t) return renderNoTournament(main);
+  const c = t.config || {};
+  main.innerHTML += `
+    <h1>Tournament Setup</h1>
+    <div class="muted" style="margin-bottom:20px;">Edit tournament configuration and manage lifecycle.</div>
+    <div class="card">
+      <div class="card-header"><div class="card-title">${esc(t.name)}</div>
+        <span class="badge ${t.status === 'setup' ? 'gold' : t.status === 'running' ? 'green' : 'muted'}">${esc(t.status)}</span>
+      </div>
+      <div class="form-row">
+        <div class="field"><label>Name</label><input type="text" id="ts-name" value="${esc(t.name)}" /></div>
+        <div class="field"><label>Date</label><input type="date" id="ts-date" value="${t.date || ''}" /></div>
+      </div>
+      <div class="form-row">
+        <div class="field">
+          <label>Format</label>
+          <select id="ts-format">
+            <option value="swiss" ${t.format === 'swiss' ? 'selected' : ''}>Swiss</option>
+            <option value="single_elim" ${t.format === 'single_elim' ? 'selected' : ''}>Single Elim</option>
+          </select>
+        </div>
+        <div class="field"><label>Rounds</label><input type="number" id="ts-rounds" value="${c.rounds || 4}" min="1" max="20" /></div>
+        <div class="field">
+          <label>Best of</label>
+          <select id="ts-bo">
+            <option value="1" ${c.bestOf === 1 ? 'selected' : ''}>BO1</option>
+            <option value="3" ${c.bestOf === 3 ? 'selected' : ''}>BO3</option>
+            <option value="5" ${c.bestOf === 5 ? 'selected' : ''}>BO5</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="field">
+          <label>Top Cut</label>
+          <select id="ts-topcut">
+            <option value="0" ${!c.topCut ? 'selected' : ''}>None</option>
+            <option value="2" ${c.topCut === 2 ? 'selected' : ''}>Top 2</option>
+            <option value="4" ${c.topCut === 4 ? 'selected' : ''}>Top 4</option>
+            <option value="8" ${c.topCut === 8 ? 'selected' : ''}>Top 8</option>
+            <option value="16" ${c.topCut === 16 ? 'selected' : ''}>Top 16</option>
+          </select>
+        </div>
+        <div class="field"><label>Bye Cube Value</label><input type="number" id="ts-bye" value="${c.byeCubeValue ?? 8}" min="0" /></div>
+      </div>
+      <div class="row mt-md" style="flex-wrap:wrap;">
+        <button class="btn btn-primary" id="ts-save">Save Changes</button>
+        ${t.status === 'setup' ? `
+          <button class="btn btn-gold" id="ts-lock">Lock Registration & Start</button>
+        ` : ''}
+        ${t.status === 'running' ? `
+          <button class="btn" id="ts-complete">Mark Complete</button>
+        ` : ''}
+      </div>
+    </div>
+
+    ${t.status === 'setup' ? `
+      <div class="card">
+        <div class="card-header"><div class="card-title">Seeding</div></div>
+        <p class="muted" style="font-size:0.88rem; margin-bottom:12px;">
+          Assign seeds manually in the Players tab, or randomize here before starting.
+        </p>
+        <button class="btn" id="ts-randomize">Randomize Seeds</button>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Player Self-Registration</div>
+          <span class="badge ${c.registrationOpen ? 'green' : 'muted'}">${c.registrationOpen ? 'Open' : 'Closed'}</span>
+        </div>
+        <p class="muted" style="font-size:0.88rem; margin-bottom:12px;">
+          When open, players can register themselves by pasting a deck code at a public URL.
+          ${state.cards.length === 0 ? '<br><strong style="color:var(--gold);">Tip:</strong> Sync the Card Library first so players see deck art during registration.' : ''}
+        </p>
+        ${c.registrationOpen ? `
+          <div class="copy-link" style="margin-bottom:12px;">
+            <span class="url">${esc(buildRegistrationUrl(t.id))}</span>
+            <button class="btn btn-sm" id="copy-reg-link">Copy</button>
+          </div>
+        ` : ''}
+        <div class="row">
+          <button class="btn ${c.registrationOpen ? 'btn-danger' : 'btn-primary'}" id="ts-toggle-reg">
+            ${c.registrationOpen ? 'Close Registration' : 'Open Registration'}
+          </button>
+        </div>
+      </div>
+    ` : ''}
+
+    <div class="card">
+      <div class="card-header"><div class="card-title">Rounds</div></div>
+      ${state.rounds.length === 0 ? `
+        <p class="muted">No rounds yet. Lock registration and start the tournament to generate round 1.</p>
+      ` : `
+        <div class="table-wrap"><table>
+          <thead><tr><th>#</th><th>Status</th><th>Pairings</th><th>Finalized</th><th></th></tr></thead>
+          <tbody>
+            ${state.rounds.map(r => {
+              const ps = state.pairings.filter(p => p.round_id === r.id);
+              return `
+                <tr>
+                  <td><strong>R${r.round_number}</strong></td>
+                  <td><span class="badge ${r.status === 'active' ? 'gold' : 'green'}">${esc(r.status)}</span></td>
+                  <td>${ps.length}</td>
+                  <td class="muted">${r.finalized_at ? new Date(r.finalized_at).toLocaleString() : '—'}</td>
+                  <td>
+                    ${r.status === 'finalized' ? `<button class="btn btn-xs" data-reopen="${r.id}">Reopen</button>` : ''}
+                  </td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table></div>
+      `}
+    </div>
+  `;
+
+  el('ts-save').addEventListener('click', async () => {
+    const patch = {
+      name: el('ts-name').value.trim(),
+      date: el('ts-date').value || null,
+      format: el('ts-format').value,
+      config: {
+        ...c,
+        rounds: parseInt(el('ts-rounds').value) || 4,
+        bestOf: parseInt(el('ts-bo').value) || 3,
+        topCut: parseInt(el('ts-topcut').value) || 0,
+        byeCubeValue: parseInt(el('ts-bye').value) || 8,
+      }
+    };
+    if (await updateTournament(t.id, patch)) {
+      toast('Saved', 'success');
+      await loadTournamentData(t.id);
+      renderRoute();
+    }
+  });
+
+  el('ts-lock')?.addEventListener('click', () => {
+    const uncheckedCount = state.players.filter(p => !p.checked_in).length;
+    const msg = uncheckedCount
+      ? `Lock registration? ${uncheckedCount} unchecked player(s) will be auto-dropped. Round 1 pairings will be generated.`
+      : 'Lock registration and generate Round 1 pairings?';
+    confirm(msg, async () => {
+      // Auto-drop unchecked
+      for (const p of state.players) {
+        if (!p.checked_in) await updatePlayer(p.id, { dropped: true });
+      }
+      // Auto-close self-registration and move to running
+      const newConfig = { ...(t.config || {}), registrationOpen: false };
+      await updateTournament(t.id, { status: 'running', config: newConfig });
+      await generateNextRound();
+      await loadTournamentData(t.id);
+      state.route = 'pairings';
+      renderShell();
+      renderRoute();
+    });
+  });
+
+  el('ts-complete')?.addEventListener('click', () => {
+    confirm('Mark tournament as complete?', async () => {
+      await updateTournament(t.id, { status: 'complete' });
+      await loadTournamentData(t.id);
+      renderRoute();
+    });
+  });
+
+  el('ts-randomize')?.addEventListener('click', async () => {
+    const shuffled = [...state.players].sort(() => Math.random() - 0.5);
+    for (let i = 0; i < shuffled.length; i++) {
+      await updatePlayer(shuffled[i].id, { seed: i + 1 });
+    }
+    toast('Seeds randomized', 'success');
+    await loadTournamentData(t.id);
+    renderRoute();
+  });
+
+  el('ts-toggle-reg')?.addEventListener('click', async () => {
+    const newConfig = { ...(t.config || {}), registrationOpen: !c.registrationOpen };
+    await updateTournament(t.id, { config: newConfig });
+    toast(newConfig.registrationOpen ? 'Registration open' : 'Registration closed', 'success');
+    await loadTournamentData(t.id);
+    renderRoute();
+  });
+
+  el('copy-reg-link')?.addEventListener('click', () => copyToClipboard(buildRegistrationUrl(t.id)));
+
+  document.querySelectorAll('[data-reopen]').forEach(b => {
+    b.addEventListener('click', () => {
+      confirm('Reopen this round? Subsequent rounds will not auto-clear — be careful.', async () => {
+        await reopenRound(b.dataset.reopen);
+        await loadTournamentData(t.id);
+        renderRoute();
+      });
+    });
+  });
+
+  attachTournamentPicker();
+}
+
+// ============================================================
+// UI: PLAYERS
+// ============================================================
+function renderPlayers(main) {
+  const t = state.activeTournament;
+  if (!t) return renderNoTournament(main);
+  const canEdit = t.status === 'setup' || t.status === 'running';
+
+  main.innerHTML += `
+    <div class="main-header">
+      <h1>Players</h1>
+      <div class="row">
+        ${canEdit ? `<button class="btn btn-primary" id="add-player">+ Add Player</button>` : ''}
+        ${canEdit ? `<button class="btn" id="import-csv">Import CSV</button>` : ''}
+        ${t.status === 'setup' ? `<button class="btn" id="check-all">Check All In</button>` : ''}
+      </div>
+    </div>
+
+    <div class="card">
+      ${state.players.length === 0 ? `
+        <div class="empty-state">
+          <h3>No players yet</h3>
+          <p>Add players to get started. You can bulk add or one at a time.</p>
+        </div>
+      ` : `
+        <div class="table-wrap"><table>
+          <thead><tr>
+            <th>Seed</th><th>Name</th><th>Alias</th><th>Checked In</th><th>Status</th><th></th>
+          </tr></thead>
+          <tbody>
+            ${state.players.map(p => `
+              <tr>
+                <td>${p.seed ?? '—'}</td>
+                <td><strong>${esc(p.name)}</strong></td>
+                <td class="muted">${esc(p.alias || '')}</td>
+                <td>
+                  ${canEdit ? `
+                    <input type="checkbox" data-check="${p.id}" ${p.checked_in ? 'checked' : ''} />
+                  ` : (p.checked_in ? '✓' : '—')}
+                </td>
+                <td>
+                  ${p.dropped ? '<span class="badge red">Dropped</span>' :
+                    p.checked_in ? '<span class="badge green">Active</span>' :
+                    '<span class="badge muted">Unchecked</span>'}
+                </td>
+                <td>
+                  ${canEdit ? `
+                    <button class="btn btn-xs" data-edit-player="${p.id}">Edit</button>
+                    ${!p.dropped ? `<button class="btn btn-xs btn-danger" data-drop="${p.id}">Drop</button>` :
+                      `<button class="btn btn-xs" data-undrop="${p.id}">Undrop</button>`}
+                    <button class="btn btn-xs btn-danger" data-del-player="${p.id}">Delete</button>
+                  ` : ''}
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table></div>
+      `}
+    </div>
+  `;
+
+  el('add-player')?.addEventListener('click', () => openAddPlayerModal());
+  el('import-csv')?.addEventListener('click', () => openCsvImportModal());
+  el('check-all')?.addEventListener('click', async () => {
+    for (const p of state.players) {
+      if (!p.checked_in) await updatePlayer(p.id, { checked_in: true });
+    }
+    toast('All checked in', 'success');
+    await loadTournamentData(t.id);
+    renderRoute();
+  });
+
+  document.querySelectorAll('[data-check]').forEach(c => {
+    c.addEventListener('change', async () => {
+      await updatePlayer(c.dataset.check, { checked_in: c.checked });
+      await loadTournamentData(t.id);
+    });
+  });
+  document.querySelectorAll('[data-edit-player]').forEach(b => {
+    b.addEventListener('click', () => openEditPlayerModal(b.dataset.editPlayer));
+  });
+  document.querySelectorAll('[data-drop]').forEach(b => {
+    b.addEventListener('click', () => {
+      confirm('Drop this player? They will be excluded from future pairings; existing pairings receive a walkover.', async () => {
+        await updatePlayer(b.dataset.drop, { dropped: true });
+        await handleDropInCurrentRound(b.dataset.drop);
+        await loadTournamentData(t.id);
+        renderRoute();
+      }, { danger: true, okLabel: 'Drop' });
+    });
+  });
+  document.querySelectorAll('[data-undrop]').forEach(b => {
+    b.addEventListener('click', async () => {
+      await updatePlayer(b.dataset.undrop, { dropped: false });
+      await loadTournamentData(t.id);
+      renderRoute();
+    });
+  });
+  document.querySelectorAll('[data-del-player]').forEach(b => {
+    b.addEventListener('click', () => {
+      confirm('Permanently delete this player? Their results are retained in history but pairings will be broken.', async () => {
+        await removePlayer(b.dataset.delPlayer);
+        await loadTournamentData(t.id);
+        renderRoute();
+      }, { danger: true, okLabel: 'Delete' });
+    });
+  });
+
+  attachTournamentPicker();
+}
+
+async function handleDropInCurrentRound(playerId) {
+  // If player has a pending pairing in the active round, award walkover to opponent
+  const activeRound = state.rounds.find(r => r.status === 'active');
+  if (!activeRound) return;
+  const pending = state.pairings.find(p =>
+    p.round_id === activeRound.id &&
+    !p.result?.winner &&
+    (p.player1_id === playerId || p.player2_id === playerId) &&
+    !p.is_bye
+  );
+  if (!pending) return;
+  const isP1 = pending.player1_id === playerId;
+  const winner = isP1 ? 'player2' : 'player1';
+  const byeCubes = (state.activeTournament?.config?.byeCubeValue) ?? 8;
+  await updatePairing(pending.id, {
+    result: {
+      winner,
+      walkover: true,
+      cubes1: isP1 ? 0 : byeCubes,
+      cubes2: isP1 ? byeCubes : 0,
+      games: []
+    }
+  });
+  toast('Walkover awarded to opponent', 'info');
+}
+
+function openAddPlayerModal() {
+  openModal(`
+    <h2>Add Player</h2>
+    <div class="field"><label>Name</label><input type="text" id="ap-name" autofocus /></div>
+    <div class="form-row" style="margin-top:12px;">
+      <div class="field"><label>Alias / Tag</label><input type="text" id="ap-alias" /></div>
+      <div class="field"><label>Seed (optional)</label><input type="number" id="ap-seed" /></div>
+    </div>
+    <label class="checkbox-row" style="margin-top:10px;">
+      <input type="checkbox" id="ap-checked" checked /> Checked in
+    </label>
+    <hr class="sep" />
+    <div class="field">
+      <label>Bulk Add (one name per line)</label>
+      <textarea id="ap-bulk" rows="4" placeholder="Ava&#10;Ben&#10;Chris"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" data-close>Cancel</button>
+      <button class="btn btn-primary" id="ap-save">Add</button>
+    </div>
+  `, (backdrop) => {
+    backdrop.querySelector('#ap-save').addEventListener('click', async () => {
+      const name = backdrop.querySelector('#ap-name').value.trim();
+      const alias = backdrop.querySelector('#ap-alias').value.trim();
+      const seed = parseInt(backdrop.querySelector('#ap-seed').value) || null;
+      const checked = backdrop.querySelector('#ap-checked').checked;
+      const bulk = backdrop.querySelector('#ap-bulk').value.trim();
+      const tid = state.activeTournamentId;
+
+      const toAdd = [];
+      if (name) toAdd.push({ name, alias, seed });
+      if (bulk) {
+        bulk.split('\n').map(s => s.trim()).filter(Boolean).forEach(n => toAdd.push({ name: n }));
+      }
+      if (toAdd.length === 0) return toast('Enter at least one name', 'error');
+
+      for (const p of toAdd) {
+        const created = await addPlayer(tid, p);
+        if (created && checked) await updatePlayer(created.id, { checked_in: true });
+      }
+      toast(`Added ${toAdd.length} player${toAdd.length > 1 ? 's' : ''}`, 'success');
+      backdrop.remove();
+      await loadTournamentData(tid);
+      renderRoute();
+    });
+  });
+}
+
+function openEditPlayerModal(id) {
+  const p = state.players.find(x => x.id === id);
+  if (!p) return;
+  openModal(`
+    <h2>Edit Player</h2>
+    <div class="field"><label>Name</label><input type="text" id="ep-name" value="${esc(p.name)}" /></div>
+    <div class="form-row" style="margin-top:12px;">
+      <div class="field"><label>Alias</label><input type="text" id="ep-alias" value="${esc(p.alias || '')}" /></div>
+      <div class="field"><label>Seed</label><input type="number" id="ep-seed" value="${p.seed || ''}" /></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" data-close>Cancel</button>
+      <button class="btn btn-primary" id="ep-save">Save</button>
+    </div>
+  `, (backdrop) => {
+    backdrop.querySelector('#ep-save').addEventListener('click', async () => {
+      await updatePlayer(p.id, {
+        name: backdrop.querySelector('#ep-name').value.trim(),
+        alias: backdrop.querySelector('#ep-alias').value.trim() || null,
+        seed: parseInt(backdrop.querySelector('#ep-seed').value) || null
+      });
+      backdrop.remove();
+      await loadTournamentData(state.activeTournamentId);
+      renderRoute();
+    });
+  });
+}
+
+// ============================================================
+// CSV IMPORT (players + decks)
+// ============================================================
+function parseCsv(text) {
+  // Simple CSV parser handling quoted fields and embedded commas
+  const rows = [];
+  let row = [];
+  let field = '';
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"' && text[i + 1] === '"') { field += '"'; i++; }
+      else if (c === '"') inQuotes = false;
+      else field += c;
+    } else {
+      if (c === '"') inQuotes = true;
+      else if (c === ',') { row.push(field); field = ''; }
+      else if (c === '\n' || c === '\r') {
+        if (field || row.length) { row.push(field); rows.push(row); row = []; field = ''; }
+        if (c === '\r' && text[i + 1] === '\n') i++;
+      } else field += c;
+    }
+  }
+  if (field || row.length) { row.push(field); rows.push(row); }
+  return rows;
+}
+
+function openCsvImportModal() {
+  openModal(`
+    <h2>Import Players from CSV</h2>
+    <p class="muted" style="font-size:0.88rem; margin-bottom:12px;">
+      Expected columns: <code>name</code>, <code>alias</code> (optional), <code>deck_code</code> (optional), <code>deck_name</code> (optional).
+      First row is treated as headers if it matches any of those names. Deck codes decode automatically.
+    </p>
+    <div class="field">
+      <label>Paste CSV</label>
+      <textarea id="ci-text" rows="8" class="deck-code-input" placeholder="name,alias,deck_code&#10;Ava,avasnap,eyJDYXJkcyI6...&#10;Ben,,eyJDYXJk..."></textarea>
+    </div>
+    <div class="row" style="margin-top:8px;">
+      <label class="checkbox-row"><input type="checkbox" id="ci-checkin" checked /> Check in imported players</label>
+    </div>
+    <div id="ci-preview" style="margin-top:12px;"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" data-close>Cancel</button>
+      <button class="btn btn-primary" id="ci-import" disabled>Import</button>
+    </div>
+  `, (b) => {
+    let parsed = [];
+
+    function preview() {
+      const text = b.querySelector('#ci-text').value.trim();
+      if (!text) { b.querySelector('#ci-preview').innerHTML = ''; b.querySelector('#ci-import').disabled = true; return; }
+      const rows = parseCsv(text).filter(r => r.some(c => c && c.trim()));
+      if (rows.length === 0) { b.querySelector('#ci-preview').innerHTML = ''; b.querySelector('#ci-import').disabled = true; return; }
+
+      // Detect header
+      const first = rows[0].map(s => (s || '').trim().toLowerCase());
+      const keywords = ['name', 'alias', 'deck_code', 'deckcode', 'deck_name', 'deckname'];
+      const hasHeader = first.some(h => keywords.includes(h));
+      let header = ['name', 'alias', 'deck_code', 'deck_name'];
+      let dataRows = rows;
+      if (hasHeader) {
+        header = first.map(h => {
+          if (h === 'deckcode') return 'deck_code';
+          if (h === 'deckname') return 'deck_name';
+          return h;
+        });
+        dataRows = rows.slice(1);
+      }
+
+      parsed = dataRows.map(r => {
+        const rec = {};
+        header.forEach((h, i) => rec[h] = (r[i] || '').trim());
+        // Decode deck code if present
+        if (rec.deck_code) {
+          const d = decodeDeckCode(rec.deck_code);
+          if (d.error) rec._deckError = d.error;
+          else { rec._cards = d.cardDefIds; if (d.name && !rec.deck_name) rec.deck_name = d.name; }
+        }
+        return rec;
+      }).filter(r => r.name);
+
+      const validCount = parsed.filter(r => r.name && (!r.deck_code || r._cards)).length;
+      b.querySelector('#ci-preview').innerHTML = `
+        <div class="card" style="padding:12px; margin:0;">
+          <div class="muted" style="font-size:0.82rem; margin-bottom:8px;">
+            ${parsed.length} rows parsed · ${validCount} ready to import
+          </div>
+          <div class="table-wrap" style="max-height:200px; overflow-y:auto;"><table>
+            <thead><tr><th>Name</th><th>Alias</th><th>Deck</th></tr></thead>
+            <tbody>
+              ${parsed.slice(0, 20).map(r => `
+                <tr>
+                  <td>${esc(r.name)}</td>
+                  <td class="muted">${esc(r.alias || '')}</td>
+                  <td>${r._cards
+                    ? `<span class="badge green">${r._cards.length} cards</span>`
+                    : r._deckError
+                      ? `<span class="badge red">${esc(r._deckError.slice(0, 40))}</span>`
+                      : `<span class="badge muted">no deck</span>`}</td>
+                </tr>
+              `).join('')}
+              ${parsed.length > 20 ? `<tr><td colspan="3" class="muted">...and ${parsed.length - 20} more</td></tr>` : ''}
+            </tbody>
+          </table></div>
+        </div>
+      `;
+      b.querySelector('#ci-import').disabled = parsed.length === 0;
+    }
+
+    b.querySelector('#ci-text').addEventListener('input', preview);
+
+    b.querySelector('#ci-import').addEventListener('click', async () => {
+      const checkin = b.querySelector('#ci-checkin').checked;
+      const tid = state.activeTournamentId;
+      let created = 0, decksSaved = 0, errors = 0;
+
+      for (const rec of parsed) {
+        try {
+          const player = await addPlayer(tid, { name: rec.name, alias: rec.alias || null });
+          if (!player) { errors++; continue; }
+          if (checkin) await updatePlayer(player.id, { checked_in: true });
+          if (rec._cards) {
+            await saveDeck(tid, player.id, rec.deck_name || null, rec._cards);
+            decksSaved++;
+          }
+          created++;
+        } catch (e) {
+          console.error(e);
+          errors++;
+        }
+      }
+      toast(`Imported ${created} players, ${decksSaved} decks${errors ? `, ${errors} errors` : ''}`, 'success');
+      b.remove();
+      await loadTournamentData(tid);
+      renderRoute();
+    });
+  });
+}
+function renderPairings(main) {
+  const t = state.activeTournament;
+  if (!t) return renderNoTournament(main);
+  const activeRound = state.rounds.find(r => r.status === 'active');
+  const showRound = activeRound || state.rounds[state.rounds.length - 1];
+
+  main.innerHTML += `
+    <div class="main-header">
+      <h1>Pairings</h1>
+      <div class="row" style="flex-wrap:wrap;">
+        ${state.rounds.length > 0 ? `
+          <select id="round-picker">
+            ${state.rounds.map(r => `
+              <option value="${r.id}" ${showRound && r.id === showRound.id ? 'selected' : ''}>
+                Round ${r.round_number} · ${r.status}
+              </option>
+            `).join('')}
+          </select>
+        ` : ''}
+        ${activeRound && activeRound.id === showRound?.id ? `
+          <button class="btn btn-gold" id="finalize-round">Finalize Round ${activeRound.round_number}</button>
+        ` : ''}
+        ${!activeRound && t.status === 'running' ? `
+          <button class="btn btn-primary" id="next-round">Generate Next Round</button>
+        ` : ''}
+      </div>
+    </div>
+  `;
+
+  if (!showRound) {
+    main.innerHTML += `
+      <div class="card">
+        <div class="empty-state">
+          <h3>No rounds yet</h3>
+          <p>Lock registration in Tournament Setup to start round 1.</p>
+        </div>
+      </div>
+    `;
+    attachTournamentPicker();
+    return;
+  }
+
+  const pairings = state.pairings.filter(p => p.round_id === showRound.id)
+    .sort((a, b) => (a.table_number || 0) - (b.table_number || 0));
+
+  const pendingCount = pairings.filter(p => !p.result?.winner && !p.is_bye).length;
+  const completeCount = pairings.filter(p => p.result?.winner || p.is_bye).length;
+
+  main.innerHTML += `
+    <div class="row-between" style="margin-bottom:16px;">
+      <div>
+        <span class="badge ${showRound.status === 'active' ? 'gold' : 'green'}">${esc(showRound.status)}</span>
+        <span class="muted" style="margin-left:8px;">
+          ${completeCount}/${pairings.length} complete · ${pendingCount} pending
+        </span>
+      </div>
+    </div>
+
+    <div>
+      ${pairings.map(p => renderPairingCard(p, showRound.status === 'finalized')).join('')}
+    </div>
+  `;
+
+  attachPairingEvents(showRound.status === 'finalized');
+
+  el('round-picker')?.addEventListener('change', (e) => {
+    renderPairingsForRound(e.target.value);
+  });
+  el('finalize-round')?.addEventListener('click', () => {
+    if (pendingCount > 0) {
+      confirm(`${pendingCount} match(es) are still pending. Finalize anyway? Pending matches will remain unresolved.`,
+        () => doFinalize(activeRound.id), { okLabel: 'Finalize' });
+    } else {
+      doFinalize(activeRound.id);
+    }
+  });
+  el('next-round')?.addEventListener('click', () => generateNextRound());
+
+  attachTournamentPicker();
+}
+
+function renderPairingsForRound(roundId) {
+  const main = el('main');
+  const round = state.rounds.find(r => r.id === roundId);
+  if (!round) return;
+  const pairings = state.pairings.filter(p => p.round_id === round.id)
+    .sort((a, b) => (a.table_number || 0) - (b.table_number || 0));
+  const pendingCount = pairings.filter(p => !p.result?.winner && !p.is_bye).length;
+  const completeCount = pairings.filter(p => p.result?.winner || p.is_bye).length;
+
+  main.innerHTML = renderTournamentPicker() + `
+    <div class="main-header">
+      <h1>Pairings — Round ${round.round_number}</h1>
+      <div class="row"><button class="btn btn-sm" id="back-to-current">Back to Current</button></div>
+    </div>
+    <div class="row-between" style="margin-bottom:16px;">
+      <div>
+        <span class="badge ${round.status === 'active' ? 'gold' : 'green'}">${esc(round.status)}</span>
+        <span class="muted" style="margin-left:8px;">${completeCount}/${pairings.length} complete</span>
+      </div>
+    </div>
+    <div>${pairings.map(p => renderPairingCard(p, round.status === 'finalized')).join('')}</div>
+  `;
+  attachPairingEvents(round.status === 'finalized');
+  el('back-to-current').addEventListener('click', () => renderRoute());
+  attachTournamentPicker();
+}
+
+function renderPairingCard(p, readOnly) {
+  const p1 = state.players.find(x => x.id === p.player1_id);
+  const p2 = state.players.find(x => x.id === p.player2_id);
+  const r = p.result || {};
+  const r1 = p1 ? computePlayerRecord(p1.id) : null;
+  const r2 = p2 ? computePlayerRecord(p2.id) : null;
+
+  if (p.is_bye) {
+    return `
+      <div class="pairing bye">
+        <div class="table-num">T${p.table_number || '-'}</div>
+        <div class="pairing-players">
+          <div class="pairing-player">
+            <div class="name">${esc(p1?.name || 'Unknown')}</div>
+            <div class="record">${r1 ? `${r1.wins}-${r1.losses}${r1.draws ? '-' + r1.draws : ''}` : ''}</div>
+          </div>
+          <div class="pairing-vs">BYE</div>
+          <div class="pairing-player right">
+            <div class="name dim">—</div>
+          </div>
+        </div>
+        <div><span class="badge gold">+${(state.activeTournament?.config?.byeCubeValue ?? 8)} cubes</span></div>
+      </div>
+    `;
+  }
+
+  const done = !!r.winner;
+  const winLabel = done
+    ? (r.winner === 'draw' ? 'DRAW' : r.winner === 'player1' ? (p1?.name || 'P1') + ' WINS' : (p2?.name || 'P2') + ' WINS')
+    : 'PENDING';
+
+  const cubes1 = r.cubes1 != null ? r.cubes1 : '';
+  const cubes2 = r.cubes2 != null ? r.cubes2 : '';
+
+  return `
+    <div class="pairing ${done ? 'complete' : 'pending'}" data-pairing-id="${p.id}">
+      <div class="table-num">T${p.table_number || '-'}</div>
+      <div>
+        <div class="pairing-players">
+          <div class="pairing-player">
+            <div class="name">${esc(p1?.name || 'Unknown')}</div>
+            <div class="record">${r1 ? `${r1.wins}-${r1.losses}${r1.draws ? '-' + r1.draws : ''} · ${fmtCubeDiff(r1.cubesWon - r1.cubesLost)}` : ''}</div>
+          </div>
+          <div class="pairing-vs">VS</div>
+          <div class="pairing-player right">
+            <div class="name">${esc(p2?.name || 'Unknown')}</div>
+            <div class="record">${r2 ? `${r2.wins}-${r2.losses}${r2.draws ? '-' + r2.draws : ''} · ${fmtCubeDiff(r2.cubesWon - r2.cubesLost)}` : ''}</div>
+          </div>
+        </div>
+        ${done ? `
+          <div style="margin-top:10px; display:flex; gap:16px; font-size:0.88rem;">
+            <div><strong>${cubes1}</strong> cubes</div>
+            <div class="muted">· ${esc(winLabel)} ·</div>
+            <div><strong>${cubes2}</strong> cubes</div>
+            ${r.walkover ? `<span class="badge muted">walkover</span>` : ''}
+          </div>
+        ` : ''}
+      </div>
+      <div>
+        ${readOnly ? `
+          ${done ? `<span class="badge green">Locked</span>` : `<span class="badge muted">No Result</span>`}
+        ` : `
+          <button class="btn btn-sm" data-report="${p.id}">${done ? 'Edit' : 'Report'}</button>
+        `}
+      </div>
+    </div>
+  `;
+}
+
+function attachPairingEvents(readOnly) {
+  if (readOnly) return;
+  document.querySelectorAll('[data-report]').forEach(b => {
+    b.addEventListener('click', () => openReportModal(b.dataset.report));
+  });
+}
+
+function openReportModal(pairingId) {
+  const pairing = state.pairings.find(p => p.id === pairingId);
+  if (!pairing) return;
+  const p1 = state.players.find(x => x.id === pairing.player1_id);
+  const p2 = state.players.find(x => x.id === pairing.player2_id);
+  const bestOf = state.activeTournament?.config?.bestOf || 3;
+  const gamesNeeded = bestOf === 1 ? 1 : Math.ceil((bestOf + 1) / 2); // max games
+  const existing = pairing.result?.games || [];
+
+  const gameRowsHtml = Array.from({ length: bestOf }, (_, i) => {
+    const g = existing[i] || {};
+    return `
+      <div class="game-row">
+        <div class="label">Game ${i + 1}</div>
+        <input type="number" class="g-cube" data-idx="${i}" data-side="1" placeholder="Cubes ${esc(p1?.name || 'P1')}" value="${g.cubes1 ?? ''}" />
+        <input type="number" class="g-cube" data-idx="${i}" data-side="2" placeholder="Cubes ${esc(p2?.name || 'P2')}" value="${g.cubes2 ?? ''}" />
+        <select class="g-winner" data-idx="${i}">
+          <option value="">—</option>
+          <option value="player1" ${g.winner === 'player1' ? 'selected' : ''}>${esc(p1?.name || 'P1')}</option>
+          <option value="player2" ${g.winner === 'player2' ? 'selected' : ''}>${esc(p2?.name || 'P2')}</option>
+        </select>
+      </div>
+    `;
+  }).join('');
+
+  openModal(`
+    <h2>Report Match</h2>
+    <div class="muted" style="margin-bottom:16px;">
+      <strong>${esc(p1?.name)}</strong> vs <strong>${esc(p2?.name)}</strong> · ${bestOf === 1 ? 'BO1' : bestOf === 3 ? 'BO3' : 'BO5'}
+    </div>
+    <p class="muted" style="font-size:0.85rem; margin-bottom:12px;">
+      Marvel Snap scoring: enter cubes gained per game (losing player's cubes lost appear on winner's line).
+      Or just enter totals below and skip the per-game breakdown.
+    </p>
+    <div id="game-rows">${gameRowsHtml}</div>
+    <hr class="sep" />
+    <h4 style="margin-bottom:8px;">Totals (auto-sums games, override if needed)</h4>
+    <div class="form-row">
+      <div class="field"><label>${esc(p1?.name)} total cubes</label><input type="number" id="r-c1" value="${pairing.result?.cubes1 ?? ''}" /></div>
+      <div class="field"><label>${esc(p2?.name)} total cubes</label><input type="number" id="r-c2" value="${pairing.result?.cubes2 ?? ''}" /></div>
+    </div>
+    <div class="field">
+      <label>Match Winner</label>
+      <select id="r-winner">
+        <option value="">—</option>
+        <option value="player1" ${pairing.result?.winner === 'player1' ? 'selected' : ''}>${esc(p1?.name)}</option>
+        <option value="player2" ${pairing.result?.winner === 'player2' ? 'selected' : ''}>${esc(p2?.name)}</option>
+        <option value="draw" ${pairing.result?.winner === 'draw' ? 'selected' : ''}>Draw</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" data-close>Cancel</button>
+      ${pairing.result?.winner ? `<button class="btn btn-danger" id="r-clear">Clear Result</button>` : ''}
+      <button class="btn btn-primary" id="r-save">Save</button>
+    </div>
+  `, (backdrop) => {
+    function recalc() {
+      let c1 = 0, c2 = 0, g1w = 0, g2w = 0;
+      backdrop.querySelectorAll('.g-cube').forEach(inp => {
+        const val = parseFloat(inp.value);
+        if (!isNaN(val)) {
+          if (inp.dataset.side === '1') c1 += val; else c2 += val;
+        }
+      });
+      backdrop.querySelectorAll('.g-winner').forEach(sel => {
+        if (sel.value === 'player1') g1w++;
+        else if (sel.value === 'player2') g2w++;
+      });
+      backdrop.querySelector('#r-c1').value = c1;
+      backdrop.querySelector('#r-c2').value = c2;
+      if (g1w > g2w) backdrop.querySelector('#r-winner').value = 'player1';
+      else if (g2w > g1w) backdrop.querySelector('#r-winner').value = 'player2';
+    }
+    backdrop.querySelectorAll('.g-cube, .g-winner').forEach(i => i.addEventListener('input', recalc));
+    backdrop.querySelector('#r-save').addEventListener('click', async () => {
+      const c1 = parseFloat(backdrop.querySelector('#r-c1').value);
+      const c2 = parseFloat(backdrop.querySelector('#r-c2').value);
+      const winner = backdrop.querySelector('#r-winner').value;
+      if (!winner) return toast('Select a match winner', 'error');
+      const games = [];
+      for (let i = 0; i < bestOf; i++) {
+        const w = backdrop.querySelector(`.g-winner[data-idx="${i}"]`).value;
+        const gc1 = parseFloat(backdrop.querySelector(`.g-cube[data-idx="${i}"][data-side="1"]`).value);
+        const gc2 = parseFloat(backdrop.querySelector(`.g-cube[data-idx="${i}"][data-side="2"]`).value);
+        if (w || !isNaN(gc1) || !isNaN(gc2)) {
+          games.push({ winner: w || null, cubes1: isNaN(gc1) ? 0 : gc1, cubes2: isNaN(gc2) ? 0 : gc2 });
+        }
+      }
+      await updatePairing(pairing.id, {
+        result: {
+          winner,
+          cubes1: isNaN(c1) ? 0 : c1,
+          cubes2: isNaN(c2) ? 0 : c2,
+          games
+        }
+      });
+      toast('Result saved', 'success');
+      backdrop.remove();
+      await loadTournamentData(state.activeTournamentId);
+      renderRoute();
+    });
+    backdrop.querySelector('#r-clear')?.addEventListener('click', async () => {
+      await updatePairing(pairing.id, { result: {} });
+      backdrop.remove();
+      await loadTournamentData(state.activeTournamentId);
+      renderRoute();
+    });
+  });
+}
+
+async function doFinalize(roundId) {
+  await finalizeRound(roundId);
+  toast('Round finalized', 'success');
+  await loadTournamentData(state.activeTournamentId);
+  renderRoute();
+}
+
+async function generateNextRound() {
+  const t = state.activeTournament;
+  if (!t) return;
+  const nextNum = state.rounds.length + 1;
+  const maxRounds = t.config?.rounds || 4;
+  const topCut = t.config?.topCut || 0;
+
+  // Detect if Swiss is complete -> start top cut
+  const inTopCut = state.rounds.some(r => r.tournament_id === t.id && r.round_number > maxRounds);
+  const lastRound = state.rounds[state.rounds.length - 1];
+
+  let pairings = null;
+
+  if (state.rounds.length >= maxRounds && topCut > 0 && !inTopCut) {
+    // Begin top cut
+    pairings = buildTopCut(topCut);
+    if (pairings.length === 0) return toast('Not enough players for top cut', 'error');
+    const round = await createRound(t.id, nextNum);
+    if (!round) return;
+    await savePairings(round.id, pairings, `TC${pairings.length * 2}`);
+    toast(`Top ${topCut} bracket started`, 'success');
+  } else if (inTopCut || (lastRound && state.pairings.some(p => p.round_id === lastRound.id && p.bracket_stage))) {
+    // Continue elim bracket
+    const prev = state.pairings.filter(p => p.round_id === lastRound.id);
+    const next = buildNextElimRound(prev);
+    if (!next) return toast('Finish all matches before advancing', 'error');
+    if (next.length === 0) return toast('Bracket complete', 'info');
+    const round = await createRound(t.id, nextNum);
+    if (!round) return;
+    const stage = next.length === 1 ? 'Final' : next.length === 2 ? 'Semis' : next.length === 4 ? 'Quarters' : `R${next.length * 2}`;
+    await savePairings(round.id, next, stage);
+    toast(`${stage} pairings generated`, 'success');
+  } else {
+    // Swiss round
+    pairings = pairSwiss();
+    if (pairings.length === 0) return toast('No active players to pair', 'error');
+    const round = await createRound(t.id, nextNum);
+    if (!round) return;
+    await savePairings(round.id, pairings);
+    toast(`Round ${nextNum} pairings generated`, 'success');
+  }
+
+  await loadTournamentData(t.id);
+  state.route = 'pairings';
+  renderShell();
+  renderRoute();
+}
+
+// ============================================================
+// UI: STANDINGS
+// ============================================================
+function renderStandings(main) {
+  const t = state.activeTournament;
+  if (!t) return renderNoTournament(main);
+  const standings = computeStandings();
+
+  main.innerHTML += `
+    <div class="main-header">
+      <h1>Standings</h1>
+      <div class="row">
+        <button class="btn btn-sm" id="export-csv">Export CSV</button>
+      </div>
+    </div>
+
+    <div class="card">
+      ${standings.length === 0 ? `
+        <div class="empty-state"><h3>No standings yet</h3><p>Results appear after the first round is finalized.</p></div>
+      ` : `
+        <div class="table-wrap"><table>
+          <thead><tr>
+            <th>Rank</th><th>Player</th><th>Record</th><th>Points</th>
+            <th>Cube Δ</th><th>OMW%</th><th>OOMW%</th>
+          </tr></thead>
+          <tbody>
+            ${standings.map(s => `
+              <tr>
+                <td class="rank-${s.rank <= 3 ? s.rank : ''}"><strong>${s.rank}</strong></td>
+                <td>
+                  <strong>${esc(s.player.name)}</strong>
+                  ${s.player.alias ? `<span class="muted"> · ${esc(s.player.alias)}</span>` : ''}
+                  ${s.player.dropped ? ' <span class="badge red">dropped</span>' : ''}
+                </td>
+                <td>${s.wins}-${s.losses}${s.draws ? '-' + s.draws : ''}</td>
+                <td>${s.matchPoints}</td>
+                <td>${fmtCubeDiff(s.cubeDiff)}</td>
+                <td>${fmtPct(s.omwp)}</td>
+                <td>${fmtPct(s.oomwp)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table></div>
+      `}
+    </div>
+  `;
+
+  el('export-csv')?.addEventListener('click', exportStandingsCsv);
+  attachTournamentPicker();
+}
+
+// ============================================================
+// UI: BRACKET
+// ============================================================
+function renderBracket(main) {
+  const t = state.activeTournament;
+  if (!t) return renderNoTournament(main);
+
+  const elimRounds = state.rounds.filter(r =>
+    state.pairings.some(p => p.round_id === r.id && p.bracket_stage)
+  ).sort((a, b) => a.round_number - b.round_number);
+
+  main.innerHTML += `
+    <div class="main-header">
+      <h1>Bracket</h1>
+      <div class="row">
+        ${t.status === 'running' && state.rounds.length >= (t.config?.rounds || 4) && (t.config?.topCut || 0) > 0 && elimRounds.length === 0 ? `
+          <button class="btn btn-gold" id="start-topcut">Start Top ${t.config.topCut}</button>
+        ` : ''}
+      </div>
+    </div>
+
+    ${elimRounds.length === 0 ? `
+      <div class="card">
+        <div class="empty-state">
+          <h3>Bracket not started</h3>
+          <p>The bracket displays after Swiss rounds complete and top cut begins.</p>
+        </div>
+      </div>
+    ` : `
+      <div class="card">
+        <div class="bracket">
+          ${elimRounds.map(r => {
+            const ps = state.pairings.filter(p => p.round_id === r.id)
+              .sort((a, b) => (a.table_number || 0) - (b.table_number || 0));
+            const stage = ps[0]?.bracket_stage || `R${r.round_number}`;
+            return `
+              <div class="bracket-round">
+                <div class="bracket-round-label">${esc(stage)}</div>
+                ${ps.map(p => {
+                  const p1 = state.players.find(x => x.id === p.player1_id);
+                  const p2 = state.players.find(x => x.id === p.player2_id);
+                  const r = p.result || {};
+                  return `
+                    <div class="bracket-match ${r.winner ? 'complete' : ''}" data-bracket-match="${p.id}" style="cursor:pointer;">
+                      <div class="bracket-slot ${r.winner === 'player1' ? 'winner' : ''} ${!p1 ? 'empty' : ''}">
+                        <span>${esc(p1?.name || 'TBD')}</span>
+                        <strong>${r.cubes1 ?? ''}</strong>
+                      </div>
+                      <div class="bracket-slot ${r.winner === 'player2' ? 'winner' : ''} ${!p2 ? 'empty' : ''}">
+                        <span>${esc(p2?.name || (p.is_bye ? 'BYE' : 'TBD'))}</span>
+                        <strong>${r.cubes2 ?? ''}</strong>
+                      </div>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><div class="card-title">Bracket Actions</div></div>
+        <div class="row" style="flex-wrap:wrap;">
+          <button class="btn btn-primary" id="advance-bracket">Advance to Next Round</button>
+        </div>
+        <p class="muted" style="font-size:0.82rem; margin-top:10px;">
+          Finalize current bracket round matches, then advance.
+        </p>
+      </div>
+    `}
+  `;
+
+  el('start-topcut')?.addEventListener('click', () => {
+    confirm(`Begin Top ${t.config.topCut} bracket from current standings?`, async () => {
+      await generateNextRound();
+    });
+  });
+  el('advance-bracket')?.addEventListener('click', async () => {
+    // Finalize last elim round, then generate next
+    const last = elimRounds[elimRounds.length - 1];
+    if (last.status === 'active') await finalizeRound(last.id);
+    await loadTournamentData(t.id);
+    await generateNextRound();
+  });
+  document.querySelectorAll('[data-bracket-match]').forEach(b => {
+    b.addEventListener('click', () => openReportModal(b.dataset.bracketMatch));
+  });
+  attachTournamentPicker();
+}
+
+// ============================================================
+// UI: DECKS
+// ============================================================
+function renderDecks(main) {
+  const t = state.activeTournament;
+  if (!t) return renderNoTournament(main);
+  const anyRevealed = state.decks.some(d => d.revealed);
+  const submittedCount = state.decks.filter(d => (d.cards || []).length > 0).length;
+
+  main.innerHTML += `
+    <div class="main-header">
+      <h1>Deck Registry</h1>
+      <div class="row">
+        ${state.cards.length === 0 ? `<span class="badge red">Card library empty</span>` : ''}
+        ${!anyRevealed ? `<button class="btn btn-gold" id="reveal-all">Reveal All Decks</button>` : ''}
+      </div>
+    </div>
+
+    <p class="muted" style="margin-bottom:16px; font-size:0.9rem;">
+      Each player submits a 12-card deck via deck code. Decks stay hidden from opponents until revealed.
+      ${submittedCount}/${state.players.length} submitted.
+    </p>
+
+    <div class="card">
+      <div class="table-wrap"><table>
+        <thead><tr><th>Player</th><th>Deck Name</th><th>Status</th><th>Cards</th><th></th></tr></thead>
+        <tbody>
+          ${state.players.map(p => {
+            const d = state.decks.find(x => x.player_id === p.id);
+            const cardCount = (d?.cards || []).length;
+            return `
+              <tr>
+                <td><strong>${esc(p.name)}</strong></td>
+                <td>${esc(d?.deck_name || '—')}</td>
+                <td>
+                  ${d ? (d.revealed ? '<span class="badge green">Revealed</span>' : '<span class="badge gold">Submitted</span>') :
+                    '<span class="badge muted">Not submitted</span>'}
+                </td>
+                <td class="muted">${cardCount > 0 ? cardCount + ' cards' : '—'}</td>
+                <td>
+                  ${d && d.revealed ? `<button class="btn btn-xs btn-ghost" data-view-deck="${p.id}">View</button>` : ''}
+                  <button class="btn btn-xs" data-deck="${p.id}">${d ? 'Edit' : 'Submit'}</button>
+                </td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table></div>
+    </div>
+
+    ${anyRevealed ? `
+      <div class="card">
+        <div class="card-header"><div class="card-title">Revealed Decks</div></div>
+        ${state.decks.filter(d => d.revealed && (d.cards || []).length > 0).map(d => {
+          const p = state.players.find(x => x.id === d.player_id);
+          return `
+            <div style="margin-bottom:24px;">
+              <div class="row-between" style="margin-bottom:10px;">
+                <h3>${esc(p?.name || 'Unknown')}${d.deck_name ? ` · <span class="muted" style="font-size:0.85rem;">${esc(d.deck_name)}</span>` : ''}</h3>
+              </div>
+              ${renderDeckPreview(d.cards, { curve: false })}
+            </div>
+          `;
+        }).join('')}
+      </div>
+    ` : ''}
+  `;
+
+  document.querySelectorAll('[data-deck]').forEach(b => {
+    b.addEventListener('click', () => openDeckModal(b.dataset.deck));
+  });
+  document.querySelectorAll('[data-view-deck]').forEach(b => {
+    b.addEventListener('click', () => {
+      const d = state.decks.find(x => x.player_id === b.dataset.viewDeck);
+      const p = state.players.find(x => x.id === b.dataset.viewDeck);
+      if (!d) return;
+      openModal(`
+        <h2>${esc(p?.name)} — ${esc(d.deck_name || 'Deck')}</h2>
+        ${renderDeckPreview(d.cards || [])}
+        <div class="modal-actions"><button class="btn" data-close>Close</button></div>
+      `);
+    });
+  });
+  el('reveal-all')?.addEventListener('click', () => {
+    confirm('Reveal all decks publicly? This is visible in spectator mode and cannot be easily undone.', async () => {
+      await revealAllDecks(t.id);
+      await loadTournamentData(t.id);
+      renderRoute();
+    });
+  });
+  attachTournamentPicker();
+}
+
+function openDeckModal(playerId) {
+  const p = state.players.find(x => x.id === playerId);
+  const d = state.decks.find(x => x.player_id === playerId);
+  const existingCards = d?.cards || [];
+
+  const backdrop = openModal(`
+    <h2>${esc(p?.name)} — Deck</h2>
+    <div class="field"><label>Deck Name (optional)</label><input type="text" id="d-name" value="${esc(d?.deck_name || '')}" placeholder="e.g. Thanos Lockdown" /></div>
+    <div class="field" style="margin-top:12px;">
+      <label>Deck Code (paste from game or snap.fan / untapped.gg)</label>
+      <textarea id="d-code" rows="3" class="deck-code-input" placeholder="eyJDYXJkcyI6W3siQ2FyZERlZklkIjoiQWJvbWluYXRpb24ifSx7Li4u"></textarea>
+    </div>
+    <div class="row" style="margin-top:8px; gap:8px;">
+      <button class="btn btn-xs" id="d-decode">Decode & Preview</button>
+      <button class="btn btn-xs btn-ghost" id="d-manual">Manual (one name per line)</button>
+      ${state.cards.length === 0 ? `<span class="badge muted">Card library empty — art won't display. Sync in Card Library.</span>` : ''}
+    </div>
+    <div id="d-manual-wrap" style="display:none; margin-top:12px;">
+      <label>Cards (one CardDefId per line)</label>
+      <textarea id="d-cards" rows="6" class="deck-code-input" placeholder="Abomination&#10;AbsorbingMan&#10;..."></textarea>
+    </div>
+    <div id="d-preview" style="margin-top:16px;"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" data-close>Cancel</button>
+      <button class="btn btn-primary" id="d-save">Save</button>
+    </div>
+  `, (b) => {
+    let currentCards = [...existingCards];
+
+    function renderPreview() {
+      const wrap = b.querySelector('#d-preview');
+      if (currentCards.length === 0) {
+        wrap.innerHTML = `<p class="muted" style="font-size:0.85rem;">No cards yet. Paste a deck code above or use manual entry.</p>`;
+        return;
+      }
+      wrap.innerHTML = `
+        <h4 style="margin-bottom:8px;">Preview</h4>
+        ${renderDeckPreview(currentCards)}
+      `;
+    }
+
+    function setCards(ids) {
+      currentCards = ids;
+      renderPreview();
+    }
+
+    // Show existing preview if any
+    if (existingCards.length > 0) renderPreview();
+    else renderPreview();
+
+    b.querySelector('#d-decode').addEventListener('click', () => {
+      const raw = b.querySelector('#d-code').value;
+      const r = decodeDeckCode(raw);
+      if (r.error) {
+        toast(r.error, 'error');
+        return;
+      }
+      if (r.cardDefIds.length !== 12) {
+        toast(`Decoded ${r.cardDefIds.length} cards (expected 12)`, 'info');
+      } else {
+        toast('Deck decoded', 'success');
+      }
+      if (r.name && !b.querySelector('#d-name').value) {
+        b.querySelector('#d-name').value = r.name;
+      }
+      setCards(r.cardDefIds);
+    });
+
+    b.querySelector('#d-manual').addEventListener('click', () => {
+      const wrap = b.querySelector('#d-manual-wrap');
+      const showing = wrap.style.display === 'block';
+      wrap.style.display = showing ? 'none' : 'block';
+      if (!showing) {
+        b.querySelector('#d-cards').value = currentCards.join('\n');
+      }
+    });
+
+    b.querySelector('#d-cards')?.addEventListener('input', (e) => {
+      const ids = e.target.value.split('\n').map(s => s.trim()).filter(Boolean);
+      setCards(ids);
+    });
+
+    b.querySelector('#d-save').addEventListener('click', async () => {
+      const name = b.querySelector('#d-name').value.trim();
+      if (currentCards.length === 0) return toast('Add cards before saving', 'error');
+      if (currentCards.length !== 12) {
+        if (!window.confirm(`Deck has ${currentCards.length} cards (expected 12). Save anyway?`)) return;
+      }
+      await saveDeck(state.activeTournamentId, playerId, name, currentCards);
+      toast('Deck saved', 'success');
+      b.remove();
+      await loadTournamentData(state.activeTournamentId);
+      renderRoute();
+    });
+  });
+}
+
+// ============================================================
+// EXPORT
+// ============================================================
+function exportJson() {
+  const t = state.activeTournament;
+  if (!t) return;
+  const payload = {
+    tournament: t,
+    players: state.players,
+    rounds: state.rounds,
+    pairings: state.pairings,
+    decks: state.decks,
+    standings: computeStandings().map(s => ({
+      rank: s.rank,
+      name: s.player.name,
+      alias: s.player.alias,
+      wins: s.wins, losses: s.losses, draws: s.draws,
+      matchPoints: s.matchPoints,
+      cubeDiff: s.cubeDiff,
+      omwp: s.omwp,
+      oomwp: s.oomwp
+    })),
+    exportedAt: new Date().toISOString()
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${t.name.replace(/\s+/g, '_')}_export.json`;
+  a.click();
+}
+
+function exportStandingsCsv() {
+  const t = state.activeTournament;
+  if (!t) return;
+  const rows = [
+    ['Rank', 'Name', 'Alias', 'Wins', 'Losses', 'Draws', 'Match Points', 'Cube Diff', 'OMW%', 'OOMW%']
+  ];
+  computeStandings().forEach(s => {
+    rows.push([
+      s.rank, s.player.name, s.player.alias || '',
+      s.wins, s.losses, s.draws, s.matchPoints, s.cubeDiff,
+      (s.omwp * 100).toFixed(2), (s.oomwp * 100).toFixed(2)
+    ]);
+  });
+  const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${t.name.replace(/\s+/g, '_')}_standings.csv`;
+  a.click();
+}
+
+// ============================================================
+// UI: CARD LIBRARY
+// ============================================================
+let _cardLibrarySearch = '';
+let _cardLibraryFilter = 'all'; // all, released, unreleased
+
+function renderCardLibrary(main) {
+  const lastSync = state.cards.length > 0
+    ? state.cards.map(c => c.updated_at).sort().pop()
+    : null;
+
+  const filtered = state.cards.filter(c => {
+    if (_cardLibraryFilter === 'released' && c.status !== 'released') return false;
+    if (_cardLibraryFilter === 'unreleased' && c.status === 'released') return false;
+    if (_cardLibrarySearch) {
+      const q = _cardLibrarySearch.toLowerCase();
+      return (c.name || '').toLowerCase().includes(q)
+        || (c.carddefid || '').toLowerCase().includes(q)
+        || (c.ability || '').toLowerCase().includes(q);
+    }
+    return true;
+  });
+
+  main.innerHTML += `
+    <div class="main-header">
+      <div>
+        <h1>Card Library</h1>
+        <div class="muted">
+          ${state.cards.length} cards${lastSync ? ` · synced ${new Date(lastSync).toLocaleString()}` : ' · never synced'}
+        </div>
+      </div>
+      <div class="row">
+        <button class="btn btn-primary" id="sync-cards">Sync from Marvelsnapzone</button>
+        <button class="btn" id="paste-cards">Paste JSON</button>
+      </div>
+    </div>
+
+    ${state.cards.length === 0 ? `
+      <div class="card">
+        <div class="empty-state">
+          <h3>No cards yet</h3>
+          <p>Sync the library so players can register decks with visual previews.</p>
+          <p class="muted" style="font-size:0.82rem; margin-top:12px;">
+            The app fetches from marvelsnapzone.com directly. If CORS blocks the request, use Paste JSON and curl it yourself:
+          </p>
+          <pre class="sql" style="text-align:left; margin-top:8px;">curl '${MARVELSNAPZONE_URL}' -H 'Accept: application/json' \\
+  -H 'User-Agent: Mozilla/5.0' &gt; cards.json</pre>
+        </div>
+      </div>
+    ` : `
+      <div class="library-search">
+        <input type="text" id="lib-search" placeholder="Search by name, CardDefId, or ability..." value="${esc(_cardLibrarySearch)}" />
+        <select id="lib-filter">
+          <option value="all" ${_cardLibraryFilter === 'all' ? 'selected' : ''}>All cards</option>
+          <option value="released" ${_cardLibraryFilter === 'released' ? 'selected' : ''}>Released</option>
+          <option value="unreleased" ${_cardLibraryFilter === 'unreleased' ? 'selected' : ''}>Unreleased</option>
+        </select>
+        <span class="muted" style="align-self:center; font-size:0.85rem;">${filtered.length} shown</span>
+      </div>
+
+      <div class="card-grid">
+        ${filtered.slice(0, 200).map(c => renderCardTile(c.carddefid)).join('')}
+      </div>
+      ${filtered.length > 200 ? `
+        <p class="muted center mt-md">Showing first 200. Refine the search to see specific cards.</p>
+      ` : ''}
+    `}
+  `;
+
+  el('sync-cards')?.addEventListener('click', syncCardsFromApi);
+  el('paste-cards')?.addEventListener('click', openPasteCardsModal);
+  el('lib-search')?.addEventListener('input', (e) => {
+    _cardLibrarySearch = e.target.value;
+    // Debounce: just rerender
+    clearTimeout(window._libSearchTimer);
+    window._libSearchTimer = setTimeout(() => renderRoute(), 200);
+  });
+  el('lib-filter')?.addEventListener('change', (e) => {
+    _cardLibraryFilter = e.target.value;
+    renderRoute();
+  });
+
+  attachTournamentPicker();
+}
+
+async function syncCardsFromApi() {
+  toast('Fetching card data...', 'info');
+  const result = await fetchCardsFromMarvelsnapzone();
+  if (!result.ok) {
+    toast(`Fetch failed: ${result.error}. Use Paste JSON instead.`, 'error');
+    openPasteCardsModal();
+    return;
+  }
+  const records = result.cards.map(compactCardRecord).filter(c => c.carddefid);
+  toast(`Got ${records.length} cards. Saving...`, 'info');
+  const saved = await upsertCards(records);
+  toast(`Saved ${saved} cards to library`, 'success');
+  await loadCards();
+  renderRoute();
+}
+
+function openPasteCardsModal() {
+  openModal(`
+    <h2>Paste Card JSON</h2>
+    <p class="muted" style="font-size:0.88rem; margin-bottom:12px;">
+      Paste the full response from <code>marvelsnapzone.com/getinfo/?searchtype=cards&amp;searchcardstype=true</code>, or an array of card objects.
+    </p>
+    <p class="muted" style="font-size:0.8rem; margin-bottom:12px;">Quick way:</p>
+    <pre class="sql" style="font-size:0.72rem;">curl '${MARVELSNAPZONE_URL}' \\
+  -H 'User-Agent: Mozilla/5.0' &gt; cards.json</pre>
+    <div class="field" style="margin-top:12px;">
+      <label>JSON</label>
+      <textarea id="pc-json" rows="8" placeholder='{"success":{"cards":[...]}} or [{"carddefid":"..."}]'></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" data-close>Cancel</button>
+      <button class="btn btn-primary" id="pc-save">Import</button>
+    </div>
+  `, (b) => {
+    b.querySelector('#pc-save').addEventListener('click', async () => {
+      const text = b.querySelector('#pc-json').value;
+      const r = parseCardsFromPasted(text);
+      if (!r.ok) return toast(r.error, 'error');
+      const records = r.cards.map(compactCardRecord).filter(c => c.carddefid);
+      toast(`Parsed ${records.length} cards. Saving...`, 'info');
+      const saved = await upsertCards(records);
+      toast(`Saved ${saved} cards`, 'success');
+      b.remove();
+      await loadCards();
+      renderRoute();
+    });
+  });
+}
+
+// ============================================================
+// UI: REGISTRATION (public)
+// ============================================================
+function renderRegistrationShell() {
+  el('app').innerHTML = `<div id="reg-root"></div>`;
+}
+
+function renderRegistrationView() {
+  const root = el('reg-root') || el('app');
+  const t = state.activeTournament;
+
+  if (!t) {
+    root.innerHTML = `
+      <div class="reg-container">
+        <div class="card"><div class="empty-state">
+          <h3>Tournament not found</h3>
+          <p class="muted">This registration link is invalid or the tournament was deleted.</p>
+        </div></div>
+      </div>`;
+    return;
+  }
+
+  const regOpen = t.config?.registrationOpen === true;
+  const playerCount = state.players.length;
+
+  if (!regOpen) {
+    root.innerHTML = `
+      <div class="reg-container">
+        <div class="reg-header">
+          <h1>${esc(t.name)}</h1>
+          <div class="meta">${esc(t.format.toUpperCase())}</div>
+        </div>
+        <div class="card"><div class="empty-state">
+          <h3>Registration closed</h3>
+          <p class="muted">The organizer hasn't opened registration yet, or it has closed.</p>
+          <p class="muted" style="margin-top:12px;">Contact the TO if you think this is a mistake.</p>
+        </div></div>
+      </div>`;
+    return;
+  }
+
+  root.innerHTML = `
+    <div class="reg-container">
+      <div class="reg-header">
+        <h1>${esc(t.name)}</h1>
+        <div class="meta">${esc(t.format.toUpperCase())} · ${playerCount} registered</div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><div class="card-title">Register</div></div>
+        <div class="form-row">
+          <div class="field"><label>Your Name</label><input type="text" id="r-name" autofocus /></div>
+          <div class="field"><label>Alias / Tag (optional)</label><input type="text" id="r-alias" /></div>
+        </div>
+        <div class="field" style="margin-top:12px;">
+          <label>Deck Code</label>
+          <textarea id="r-code" rows="3" class="deck-code-input" placeholder="Paste your deck code here (starts with eyJ...)"></textarea>
+          <p class="muted" style="font-size:0.78rem; margin-top:6px;">
+            In Marvel Snap: open your deck, tap the share icon, select Copy Deck. If that gives a short code, export from snap.fan or untapped.gg instead.
+          </p>
+        </div>
+        <div class="field" style="margin-top:12px;">
+          <label>Deck Name (optional)</label>
+          <input type="text" id="r-deckname" placeholder="e.g. Thanos Lockdown" />
+        </div>
+
+        <div style="margin-top:16px;">
+          <button class="btn" id="r-decode">Decode & Preview Deck</button>
+        </div>
+
+        <div id="r-preview" style="margin-top:20px;"></div>
+
+        <div class="modal-actions" style="margin-top:24px;">
+          <button class="btn btn-primary btn-gold" id="r-submit" disabled>Submit Registration</button>
+        </div>
+      </div>
+
+      <p class="muted center" style="font-size:0.78rem; margin-top:16px;">
+        Your deck is encrypted in the database and only revealed if the TO chooses to make it public.
+      </p>
+    </div>
+  `;
+
+  let decodedCards = [];
+
+  function renderPreview() {
+    const wrap = el('r-preview');
+    const submit = el('r-submit');
+    if (decodedCards.length === 0) {
+      wrap.innerHTML = '';
+      submit.disabled = true;
+      return;
+    }
+    wrap.innerHTML = `
+      <h4 style="margin-bottom:8px;">Deck Preview</h4>
+      ${renderDeckPreview(decodedCards)}
+    `;
+    submit.disabled = decodedCards.length !== 12;
+  }
+
+  el('r-decode').addEventListener('click', () => {
+    const raw = el('r-code').value;
+    const r = decodeDeckCode(raw);
+    if (r.error) {
+      toast(r.error, 'error');
+      decodedCards = [];
+      renderPreview();
+      return;
+    }
+    decodedCards = r.cardDefIds;
+    if (r.name && !el('r-deckname').value) el('r-deckname').value = r.name;
+    if (decodedCards.length !== 12) {
+      toast(`Deck has ${decodedCards.length} cards (expected 12)`, 'info');
+    } else {
+      toast('Deck decoded', 'success');
+    }
+    renderPreview();
+  });
+
+  el('r-submit').addEventListener('click', async () => {
+    const name = el('r-name').value.trim();
+    const alias = el('r-alias').value.trim();
+    const deckname = el('r-deckname').value.trim();
+    if (!name) return toast('Enter your name', 'error');
+    if (decodedCards.length !== 12) return toast('Decode a 12-card deck first', 'error');
+
+    // Check duplicate name
+    const exists = state.players.some(p => p.name.toLowerCase() === name.toLowerCase());
+    if (exists) {
+      if (!window.confirm(`"${name}" is already registered. Add anyway? (Use a different alias to distinguish.)`)) return;
+    }
+
+    // Create player
+    const player = await addPlayer(state.activeTournamentId, { name, alias });
+    if (!player) return;
+    await saveDeck(state.activeTournamentId, player.id, deckname, decodedCards);
+
+    // Show confirmation
+    const root = el('reg-root');
+    root.innerHTML = `
+      <div class="reg-container">
+        <div class="reg-header">
+          <h1>You're In</h1>
+          <div class="meta">${esc(t.name)}</div>
+        </div>
+        <div class="card">
+          <div style="text-align:center; padding:24px 0;">
+            <div style="font-family:'Bebas Neue',sans-serif; font-size:3rem; color:var(--gold); letter-spacing:0.06em;">
+              ${esc(name.toUpperCase())}
+            </div>
+            <p class="muted" style="margin-top:8px;">Registered with a ${decodedCards.length}-card deck</p>
+          </div>
+          ${renderDeckPreview(decodedCards, { stats: false, curve: false })}
+          <p class="muted center" style="font-size:0.85rem; margin-top:16px;">
+            The TO will check you in at the event. Good luck!
+          </p>
+          <div class="modal-actions">
+            <button class="btn" onclick="window.location.reload()">Register Another</button>
+          </div>
+        </div>
+      </div>
+    `;
+  });
+}
+
+// ============================================================
+// UI: NO TOURNAMENT FALLBACK
+// ============================================================
+function renderNoTournament(main) {
+  main.innerHTML += `
+    <h1>No Active Tournament</h1>
+    <div class="card">
+      <div class="empty-state">
+        <h3>Select or create a tournament</h3>
+        <p>Head to the Dashboard to create a new one.</p>
+        <button class="btn btn-primary mt-md" id="go-dash">Go to Dashboard</button>
+      </div>
+    </div>
+  `;
+  el('go-dash').addEventListener('click', () => {
+    state.route = 'dashboard';
+    renderShell();
+    renderRoute();
+  });
+  attachTournamentPicker();
+}
+
+// ============================================================
+// SPECTATOR MODE
+// ============================================================
+function renderSpectatorShell() {
+  el('app').innerHTML = `
+    <div style="min-height:100vh;">
+      <div id="spec-root"></div>
+    </div>
+  `;
+}
+
+function renderSpectator() {
+  const root = el('spec-root') || el('app');
+  const t = state.activeTournament;
+  if (!t) {
+    root.innerHTML = `
+      <div class="card" style="max-width:500px; margin:80px auto;">
+        <div class="empty-state">
+          <h3>Tournament not found</h3>
+          <p class="muted">This tournament may have been deleted or the link is incorrect.</p>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  const activeRound = state.rounds.find(r => r.status === 'active');
+  const latestRound = state.rounds[state.rounds.length - 1];
+  const display = activeRound || latestRound;
+
+  root.innerHTML = `
+    <div class="spectator-header">
+      <h1>${esc(t.name)}</h1>
+      <div class="meta">
+        ${esc(t.format.toUpperCase())} ·
+        ${display ? `Round ${display.round_number}` : 'Not started'} ·
+        <span class="badge ${t.status === 'running' ? 'gold' : t.status === 'complete' ? 'green' : 'muted'}">${esc(t.status)}</span>
+      </div>
+      <div class="spectator-tabs">
+        <div class="spectator-tab ${state.specRoute === 'standings' ? 'active' : ''}" data-spec="standings">Standings</div>
+        <div class="spectator-tab ${state.specRoute === 'pairings' ? 'active' : ''}" data-spec="pairings">Pairings</div>
+        <div class="spectator-tab ${state.specRoute === 'bracket' ? 'active' : ''}" data-spec="bracket">Bracket</div>
+        ${state.decks.some(d => d.revealed) ? `
+          <div class="spectator-tab ${state.specRoute === 'decks' ? 'active' : ''}" data-spec="decks">Decks</div>
+        ` : ''}
+      </div>
+      <div style="font-size:0.75rem; color:var(--muted); margin-top:4px;">
+        <span class="live-dot"></span>Live · Last updated ${state.lastUpdated ? state.lastUpdated.toLocaleTimeString() : '—'}
+      </div>
+    </div>
+    <div style="max-width:900px; margin:0 auto; padding:0 16px 60px;" id="spec-body"></div>
+  `;
+
+  document.querySelectorAll('[data-spec]').forEach(tab => {
+    tab.addEventListener('click', () => {
+      state.specRoute = tab.dataset.spec;
+      renderSpectator();
+    });
+  });
+
+  const body = el('spec-body');
+  switch (state.specRoute) {
+    case 'standings': renderSpecStandings(body); break;
+    case 'pairings': renderSpecPairings(body, display); break;
+    case 'bracket': renderSpecBracket(body); break;
+    case 'decks': renderSpecDecks(body); break;
+  }
+}
+
+function renderSpecDecks(body) {
+  const revealed = state.decks.filter(d => d.revealed && (d.cards || []).length > 0);
+  if (revealed.length === 0) {
+    body.innerHTML = `<div class="card"><div class="empty-state"><h3>No decks revealed yet</h3><p>The organizer can reveal decks after the tournament.</p></div></div>`;
+    return;
+  }
+  body.innerHTML = `
+    ${revealed.map(d => {
+      const p = state.players.find(x => x.id === d.player_id);
+      return `
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">${esc(p?.name || 'Unknown')}${d.deck_name ? ` · <span class="muted" style="font-size:0.78rem;">${esc(d.deck_name)}</span>` : ''}</div>
+          </div>
+          ${renderDeckPreview(d.cards, { curve: false })}
+        </div>
+      `;
+    }).join('')}
+  `;
+}
+
+function renderSpecStandings(body) {
+  const standings = computeStandings();
+  if (standings.length === 0) {
+    body.innerHTML = `<div class="card"><div class="empty-state"><h3>No results yet</h3><p>Check back after the first round.</p></div></div>`;
+    return;
+  }
+  body.innerHTML = `
+    <div class="card">
+      <div class="table-wrap"><table>
+        <thead><tr><th>#</th><th>Player</th><th>Record</th><th>Pts</th><th>Cube Δ</th><th>OMW%</th></tr></thead>
+        <tbody>
+          ${standings.map(s => `
+            <tr>
+              <td class="rank-${s.rank <= 3 ? s.rank : ''}"><strong>${s.rank}</strong></td>
+              <td>
+                <strong>${esc(s.player.name)}</strong>
+                ${s.player.alias ? `<span class="muted"> · ${esc(s.player.alias)}</span>` : ''}
+                ${s.player.dropped ? ' <span class="badge red">dropped</span>' : ''}
+              </td>
+              <td>${s.wins}-${s.losses}${s.draws ? '-' + s.draws : ''}</td>
+              <td>${s.matchPoints}</td>
+              <td>${fmtCubeDiff(s.cubeDiff)}</td>
+              <td>${fmtPct(s.omwp)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table></div>
+    </div>
+  `;
+}
+
+function renderSpecPairings(body, round) {
+  if (!round) {
+    body.innerHTML = `<div class="card"><div class="empty-state"><h3>No active round</h3></div></div>`;
+    return;
+  }
+  const pairings = state.pairings.filter(p => p.round_id === round.id)
+    .sort((a, b) => (a.table_number || 0) - (b.table_number || 0));
+  body.innerHTML = `
+    <div class="row-between" style="margin-bottom:16px;">
+      <h2 style="margin:0;">Round ${round.round_number}</h2>
+      <span class="badge ${round.status === 'active' ? 'gold' : 'green'}">${esc(round.status)}</span>
+    </div>
+    ${pairings.map(p => {
+      const p1 = state.players.find(x => x.id === p.player1_id);
+      const p2 = state.players.find(x => x.id === p.player2_id);
+      const r = p.result || {};
+      const done = !!r.winner;
+      if (p.is_bye) {
+        return `
+          <div class="pairing bye">
+            <div class="table-num">T${p.table_number || '-'}</div>
+            <div class="pairing-players">
+              <div class="pairing-player"><div class="name">${esc(p1?.name || '—')}</div></div>
+              <div class="pairing-vs">BYE</div>
+              <div class="pairing-player right"><div class="name dim">—</div></div>
+            </div>
+            <div><span class="badge gold">BYE</span></div>
+          </div>
+        `;
+      }
+      return `
+        <div class="pairing ${done ? 'complete' : 'pending'}">
+          <div class="table-num">T${p.table_number || '-'}</div>
+          <div class="pairing-players">
+            <div class="pairing-player">
+              <div class="name">${esc(p1?.name || 'TBD')}</div>
+            </div>
+            <div class="pairing-vs">VS</div>
+            <div class="pairing-player right">
+              <div class="name">${esc(p2?.name || 'TBD')}</div>
+            </div>
+          </div>
+          <div>
+            ${done && round.status === 'finalized' ? `
+              <div style="text-align:right;">
+                <div style="font-family:'Bebas Neue',sans-serif; font-size:1.3rem; color:var(--gold);">
+                  ${r.cubes1 ?? 0} — ${r.cubes2 ?? 0}
+                </div>
+                <div style="font-size:0.72rem; color:var(--muted);">
+                  ${r.winner === 'draw' ? 'DRAW' : esc(r.winner === 'player1' ? p1?.name : p2?.name) + ' WINS'}
+                </div>
+              </div>
+            ` : done ? `<span class="badge green">Reported</span>` : `<span class="badge gold">Playing</span>`}
+          </div>
+        </div>
+      `;
+    }).join('')}
+  `;
+}
+
+function renderSpecBracket(body) {
+  const elimRounds = state.rounds.filter(r =>
+    state.pairings.some(p => p.round_id === r.id && p.bracket_stage)
+  ).sort((a, b) => a.round_number - b.round_number);
+
+  if (elimRounds.length === 0) {
+    body.innerHTML = `<div class="card"><div class="empty-state"><h3>Bracket not started</h3><p>Swiss rounds must complete first.</p></div></div>`;
+    return;
+  }
+
+  body.innerHTML = `
+    <div class="card">
+      <div class="bracket">
+        ${elimRounds.map(r => {
+          const ps = state.pairings.filter(p => p.round_id === r.id);
+          const stage = ps[0]?.bracket_stage || `R${r.round_number}`;
+          return `
+            <div class="bracket-round">
+              <div class="bracket-round-label">${esc(stage)}</div>
+              ${ps.map(p => {
+                const p1 = state.players.find(x => x.id === p.player1_id);
+                const p2 = state.players.find(x => x.id === p.player2_id);
+                const rr = p.result || {};
+                return `
+                  <div class="bracket-match ${rr.winner ? 'complete' : ''}">
+                    <div class="bracket-slot ${rr.winner === 'player1' ? 'winner' : ''} ${!p1 ? 'empty' : ''}">
+                      <span>${esc(p1?.name || 'TBD')}</span>
+                      <strong>${rr.cubes1 ?? ''}</strong>
+                    </div>
+                    <div class="bracket-slot ${rr.winner === 'player2' ? 'winner' : ''} ${!p2 ? 'empty' : ''}">
+                      <span>${esc(p2?.name || (p.is_bye ? 'BYE' : 'TBD'))}</span>
+                      <strong>${rr.cubes2 ?? ''}</strong>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          `;
+        }).join('')}
+      </div>
+    </div>
+  `;
+}
+
+// ============================================================
+// REAL-TIME SUBSCRIPTIONS (Spectator)
+// ============================================================
+function subscribeRealtime(tournamentId) {
+  if (!state.supabase) return;
+  if (state.realtimeChannel) {
+    state.supabase.removeChannel(state.realtimeChannel);
+  }
+
+  const channel = state.supabase.channel(`tourney-${tournamentId}`)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'tournaments', filter: `id=eq.${tournamentId}` }, async () => {
+      await loadTournamentData(tournamentId);
+      renderSpectator();
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'players', filter: `tournament_id=eq.${tournamentId}` }, async () => {
+      await loadTournamentData(tournamentId);
+      renderSpectator();
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'rounds', filter: `tournament_id=eq.${tournamentId}` }, async () => {
+      await loadTournamentData(tournamentId);
+      renderSpectator();
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'pairings' }, async () => {
+      await loadTournamentData(tournamentId);
+      renderSpectator();
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'decks', filter: `tournament_id=eq.${tournamentId}` }, async () => {
+      await loadTournamentData(tournamentId);
+      renderSpectator();
+    })
+    .subscribe();
+
+  state.realtimeChannel = channel;
+
+  // Also poll every 30s as backup
+  setInterval(async () => {
+    await loadTournamentData(tournamentId);
+    renderSpectator();
+  }, 30000);
+}
+
+// ============================================================
+// BOOT
+// ============================================================
+async function boot() {
+  parseRoute();
+
+  // Supabase connect
+  if (!state.supabase) {
+    if (!initSupabase()) {
+      if (state.mode === 'spectator' || state.mode === 'register') {
+        el('app').innerHTML = `<div class="card" style="max-width:500px;margin:80px auto;">
+          <div class="empty-state">
+            <h3>Link inactive</h3>
+            <p>The organizer hasn't configured this instance yet.</p>
+          </div>
+        </div>`;
+        return;
+      }
+      return renderSetup();
+    }
+  }
+
+  if (state.mode === 'spectator') {
+    renderSpectatorShell();
+    try {
+      await Promise.all([
+        loadTournamentData(state.activeTournamentId),
+        loadCards(),
+      ]);
+    } catch (err) {
+      console.error(err);
+    }
+    renderSpectator();
+    subscribeRealtime(state.activeTournamentId);
+    return;
+  }
+
+  if (state.mode === 'register') {
+    renderRegistrationShell();
+    try {
+      await Promise.all([
+        loadTournamentData(state.activeTournamentId),
+        loadCards(),
+      ]);
+    } catch (err) {
+      console.error(err);
+    }
+    renderRegistrationView();
+    return;
+  }
+
+  // TO mode: check PIN
+  const hasPin = !!localStorage.getItem(LS_KEYS.PIN_HASH);
+  const authed = sessionStorage.getItem(LS_KEYS.AUTHED) === '1';
+  if (!authed) {
+    return renderPinGate();
+  }
+  state.authed = true;
+
+  // Load tournaments and most recent active
+  await Promise.all([loadTournaments(), loadCards()]);
+  const saved = localStorage.getItem(LS_KEYS.ACTIVE_TOURNAMENT);
+  if (saved && state.tournaments.find(t => t.id === saved)) {
+    state.activeTournamentId = saved;
+  } else if (state.tournaments.length > 0) {
+    state.activeTournamentId = state.tournaments[0].id;
+    localStorage.setItem(LS_KEYS.ACTIVE_TOURNAMENT, state.activeTournamentId);
+  }
+  if (state.activeTournamentId) {
+    await loadTournamentData(state.activeTournamentId);
+  }
+
+  renderShell();
+  renderRoute();
+}
+
+// Kickoff
+boot().catch(err => {
+  console.error('Boot error', err);
+  toast('Startup error — check console', 'error');
+});
+
+</script>
+</body>
+</html>
