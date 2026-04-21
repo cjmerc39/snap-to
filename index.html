@@ -1477,6 +1477,18 @@ create table if not exists cards (
   updated_at timestamptz default now()
 );
 
+-- Location library (global, shared across tournaments)
+create table if not exists locations (
+  carddefid text primary key,
+  cid int,
+  name text not null,
+  ability text,
+  flavor text,
+  art text,
+  status text,
+  updated_at timestamptz default now()
+);
+
 -- Row-level security: open read + write on the anon key.
 -- The TO UI is client-side PIN protected.
 -- For production hardening, replace with auth + scoped policies.
@@ -1486,6 +1498,7 @@ alter table rounds enable row level security;
 alter table pairings enable row level security;
 alter table decks enable row level security;
 alter table cards enable row level security;
+alter table locations enable row level security;
 
 do $$ begin
   create policy "anon all tournaments" on tournaments for all using (true) with check (true);
@@ -1494,6 +1507,7 @@ do $$ begin
   create policy "anon all pairings" on pairings for all using (true) with check (true);
   create policy "anon all decks" on decks for all using (true) with check (true);
   create policy "anon all cards" on cards for all using (true) with check (true);
+  create policy "anon all locations" on locations for all using (true) with check (true);
 exception when duplicate_object then null; end $$;
 
 -- Enable Realtime for spectator mode (safe to re-run)
@@ -1532,6 +1546,7 @@ const state = {
   decks: [],
   cards: [],               // global card library
   cardsIndex: new Map(),   // carddefid -> card object, built from cards[]
+  locations: [],           // global location library
   needsSetup: false,       // supabase creds missing
   sidebarOpen: false,
   lastUpdated: null,
@@ -1684,26 +1699,284 @@ function humanizeCardDefId(carddefid) {
   return carddefid.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/([A-Z])([A-Z][a-z])/g, '$1 $2');
 }
 
+// ============================================================
+// AVATARS
+// ============================================================
+
+/**
+ * Avatar is stored on player.stats.avatar as either:
+ *   { type: 'card', carddefid: 'IronMan' }
+ *   { type: 'drawn', dataUrl: 'data:image/png;base64,...' }
+ * or absent / null.
+ */
+function getPlayerAvatar(player) {
+  return player?.stats?.avatar || null;
+}
+
+function getInitials(name) {
+  if (!name) return '?';
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function renderAvatar(player, size = 'md') {
+  const avatar = getPlayerAvatar(player);
+  const name = player?.name || '?';
+  if (avatar?.type === 'card') {
+    const card = lookupCard(avatar.carddefid);
+    if (card?.art) {
+      return `<span class="avatar ${size}" title="${esc(name)}"><img src="${esc(card.art)}" alt="" onerror="this.parentElement.innerHTML='${esc(getInitials(name))}'" /></span>`;
+    }
+  }
+  if (avatar?.type === 'drawn' && avatar.dataUrl) {
+    return `<span class="avatar ${size}" title="${esc(name)}"><img src="${esc(avatar.dataUrl)}" alt="" /></span>`;
+  }
+  return `<span class="avatar ${size}" title="${esc(name)}">${esc(getInitials(name))}</span>`;
+}
+
+function renderPlayerRow(player, size = 'sm') {
+  if (!player) return '';
+  return `<span class="player-row">${renderAvatar(player, size)}<span>${esc(player.name)}</span></span>`;
+}
+
+/**
+ * Render an avatar picker inside a container.
+ * Two modes: 'card' (grid of available card art) and 'draw' (canvas pad).
+ * Calls onSelect(avatar) when the user picks one.
+ */
+function mountAvatarPicker(container, opts = {}) {
+  const initial = opts.initial || null;
+  let current = initial;
+  let mode = (initial?.type === 'drawn') ? 'draw' : 'card';
+
+  function render() {
+    container.innerHTML = `
+      <div class="row" style="margin-bottom:10px; gap:6px;">
+        <button type="button" class="btn btn-sm ${mode === 'card' ? 'btn-gold' : 'btn-ghost'}" data-avatar-mode="card">Pick a Character</button>
+        <button type="button" class="btn btn-sm ${mode === 'draw' ? 'btn-gold' : 'btn-ghost'}" data-avatar-mode="draw">Draw Your Own</button>
+        <button type="button" class="btn btn-sm btn-ghost" data-avatar-mode="none">Skip (use initials)</button>
+      </div>
+      <div id="avatar-body"></div>
+    `;
+    container.querySelectorAll('[data-avatar-mode]').forEach(b => {
+      b.addEventListener('click', () => {
+        const m = b.dataset.avatarMode;
+        if (m === 'none') {
+          current = null;
+          opts.onSelect?.(null);
+          return renderPreview();
+        }
+        mode = m;
+        render();
+      });
+    });
+    if (mode === 'card') renderCardMode();
+    else renderDrawMode();
+    renderPreview();
+  }
+
+  function renderPreview() {
+    // No separate preview; caller shows a live player-row elsewhere
+  }
+
+  function renderCardMode() {
+    const body = container.querySelector('#avatar-body');
+    const released = state.cards.filter(c => c.status === 'released' && c.art);
+    if (released.length === 0) {
+      body.innerHTML = `<p class="muted" style="font-size:0.85rem;">Card library is empty. Draw instead or skip.</p>`;
+      return;
+    }
+    // Sort alphabetically for discoverability
+    const sorted = [...released].sort((a, b) => a.name.localeCompare(b.name));
+    body.innerHTML = `
+      <input type="text" id="avatar-search" placeholder="Search characters..." style="margin-bottom:8px;" />
+      <div class="avatar-chooser" id="avatar-choices">
+        ${renderChoices(sorted)}
+      </div>
+    `;
+    body.querySelector('#avatar-search').addEventListener('input', (e) => {
+      const q = e.target.value.toLowerCase();
+      const filtered = q ? sorted.filter(c => c.name.toLowerCase().includes(q)) : sorted;
+      body.querySelector('#avatar-choices').innerHTML = renderChoices(filtered);
+      attachChoiceHandlers();
+    });
+    attachChoiceHandlers();
+  }
+
+  function renderChoices(list) {
+    return list.map(c => `
+      <div class="avatar-choice ${current?.type === 'card' && current.carddefid === c.carddefid ? 'selected' : ''}"
+           data-pick="${esc(c.carddefid)}" title="${esc(c.name)}">
+        <img src="${esc(c.art)}" alt="${esc(c.name)}" loading="lazy" />
+      </div>
+    `).join('');
+  }
+
+  function attachChoiceHandlers() {
+    container.querySelectorAll('.avatar-choice[data-pick]').forEach(c => {
+      c.addEventListener('click', () => {
+        current = { type: 'card', carddefid: c.dataset.pick };
+        container.querySelectorAll('.avatar-choice').forEach(x => x.classList.remove('selected'));
+        c.classList.add('selected');
+        opts.onSelect?.(current);
+      });
+    });
+  }
+
+  function renderDrawMode() {
+    const body = container.querySelector('#avatar-body');
+    body.innerHTML = `
+      <div class="draw-pad-wrap">
+        <canvas class="draw-pad" id="draw-canvas" width="240" height="240"></canvas>
+        <div class="draw-tools">
+          ${['#0A0B14', '#E62429', '#FFC233', '#3B82F6', '#2EB872', '#FFFFFF'].map(color => `
+            <div class="draw-color" data-color="${color}" style="background:${color};"></div>
+          `).join('')}
+          <button type="button" class="btn btn-xs" id="draw-clear">Clear</button>
+        </div>
+        <p class="muted" style="font-size:0.75rem; text-align:center;">
+          Draw in the circle. Works with mouse or finger on touchscreen.
+        </p>
+      </div>
+    `;
+    const canvas = body.querySelector('#draw-canvas');
+    const ctx = canvas.getContext('2d');
+    let drawing = false;
+    let lastX = 0, lastY = 0;
+    let color = '#0A0B14';
+    let lineWidth = 5;
+
+    // White circle background so saved image is clean
+    function clearCanvas() {
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+    clearCanvas();
+
+    // Load initial drawing if present
+    if (current?.type === 'drawn' && current.dataUrl) {
+      const img = new Image();
+      img.onload = () => ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      img.src = current.dataUrl;
+    }
+
+    function pointerPos(e) {
+      const rect = canvas.getBoundingClientRect();
+      const touch = e.touches?.[0];
+      const cx = touch ? touch.clientX : e.clientX;
+      const cy = touch ? touch.clientY : e.clientY;
+      return {
+        x: (cx - rect.left) * (canvas.width / rect.width),
+        y: (cy - rect.top) * (canvas.height / rect.height)
+      };
+    }
+
+    function start(e) {
+      e.preventDefault();
+      drawing = true;
+      const p = pointerPos(e);
+      lastX = p.x; lastY = p.y;
+    }
+
+    function move(e) {
+      if (!drawing) return;
+      e.preventDefault();
+      const p = pointerPos(e);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = lineWidth;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(lastX, lastY);
+      ctx.lineTo(p.x, p.y);
+      ctx.stroke();
+      lastX = p.x; lastY = p.y;
+    }
+
+    function end() {
+      if (!drawing) return;
+      drawing = false;
+      // Save as data URL
+      current = { type: 'drawn', dataUrl: canvas.toDataURL('image/png') };
+      opts.onSelect?.(current);
+    }
+
+    canvas.addEventListener('mousedown', start);
+    canvas.addEventListener('mousemove', move);
+    canvas.addEventListener('mouseup', end);
+    canvas.addEventListener('mouseleave', end);
+    canvas.addEventListener('touchstart', start);
+    canvas.addEventListener('touchmove', move);
+    canvas.addEventListener('touchend', end);
+
+    body.querySelectorAll('.draw-color').forEach(c => {
+      if (c.dataset.color === color) c.classList.add('selected');
+      c.addEventListener('click', () => {
+        color = c.dataset.color;
+        body.querySelectorAll('.draw-color').forEach(x => x.classList.remove('selected'));
+        c.classList.add('selected');
+      });
+    });
+
+    body.querySelector('#draw-clear').addEventListener('click', () => {
+      clearCanvas();
+      current = null;
+      opts.onSelect?.(null);
+    });
+  }
+
+  render();
+}
+
 function renderCardTile(carddefid, opts = {}) {
   const card = lookupCard(carddefid);
   if (!card) {
     return `
-      <div class="card-tile unknown" title="Card not in library">
+      <div class="card-tile unknown" title="Card not in library — sync the Card Library">
         <img src="" alt="" />
-        <div class="cost-chip">?</div>
         <div class="name-strip">${esc(humanizeCardDefId(carddefid))}</div>
       </div>
     `;
   }
+  const titleParts = [card.name];
+  if (card.cost != null) titleParts.push(`Cost ${card.cost}`);
+  if (card.power != null) titleParts.push(`Power ${card.power}`);
+  if (card.ability) titleParts.push(card.ability.replace(/<[^>]*>/g, ''));
   return `
-    <div class="card-tile" title="${esc(card.name)} — Cost ${card.cost}, Power ${card.power}">
+    <div class="card-tile" title="${esc(titleParts.join(' · '))}">
       <img src="${esc(card.art || '')}" alt="${esc(card.name)}" loading="lazy"
            onerror="this.style.opacity='0.2'" />
-      <div class="cost-chip">${card.cost ?? '?'}</div>
-      <div class="power-chip">${card.power ?? '?'}</div>
-      <div class="name-strip">${esc(card.name)}</div>
+      ${opts.showName !== false ? `<div class="name-strip">${esc(card.name)}</div>` : ''}
     </div>
   `;
+}
+
+// Parse ability type from ability text
+function getAbilityType(card) {
+  const raw = (card?.ability || '').replace(/<[^>]*>/g, '').toLowerCase().trim();
+  if (!raw) return 'no-ability';
+  if (raw.includes('on reveal')) return 'on-reveal';
+  if (raw.includes('ongoing')) return 'ongoing';
+  if (raw.includes('end of turn') || raw.includes('at the end of')) return 'end-of-turn';
+  if (raw.includes('start of turn') || raw.includes('at the start')) return 'start-of-turn';
+  if (raw.includes('activate')) return 'activate';
+  return 'other';
+}
+
+// Collect all unique tags from loaded cards (for synergy filter)
+function collectCardTags(cardList) {
+  const counts = new Map();
+  const list = cardList || state.cards;
+  list.forEach(c => {
+    (c.tags || []).forEach(t => {
+      if (!t) return;
+      counts.set(t, (counts.get(t) || 0) + 1);
+    });
+  });
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([tag, count]) => ({ tag, count }));
 }
 
 function renderDeckPreview(cardDefIds, opts = {}) {
@@ -2061,6 +2334,89 @@ function parseCardsFromPasted(text) {
     const cards = Array.isArray(json) ? json : json?.success?.cards || json?.cards;
     if (!Array.isArray(cards)) return { ok: false, error: 'JSON missing cards array' };
     return { ok: true, cards };
+  } catch (err) {
+    return { ok: false, error: 'Invalid JSON: ' + err.message };
+  }
+}
+
+// ============================================================
+// LOCATION LIBRARY
+// ============================================================
+const MARVELSNAPZONE_LOCATIONS_URL = 'https://marvelsnapzone.com/getinfo/?searchtype=locations&searchcardstype=true';
+
+async function loadLocations() {
+  const { data, error } = await state.supabase
+    .from('locations')
+    .select('*')
+    .order('name', { ascending: true });
+  if (error) {
+    if (error.message.includes('does not exist') || error.code === '42P01') {
+      // Table missing; treat as empty silently (user re-runs migration)
+    }
+    state.locations = [];
+    return [];
+  }
+  state.locations = data || [];
+  return state.locations;
+}
+
+function compactLocationRecord(raw) {
+  // Locations in the marvelsnapzone API may use `carddefid` or `locationdefid`;
+  // fall back to cid if neither is present.
+  let id = raw.carddefid || raw.locationdefid;
+  if (!id && raw.cid) id = String(raw.cid);
+  return {
+    carddefid: id || null,
+    cid: raw.cid || null,
+    name: raw.name || '',
+    ability: raw.ability || '',
+    flavor: raw.flavor || '',
+    art: raw.art || '',
+    status: raw.status || null,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+async function upsertLocations(records) {
+  const chunkSize = 100;
+  let saved = 0;
+  for (let i = 0; i < records.length; i += chunkSize) {
+    const chunk = records.slice(i, i + chunkSize);
+    const { error } = await state.supabase
+      .from('locations')
+      .upsert(chunk, { onConflict: 'carddefid' });
+    if (error) {
+      toast(`Locations save failed: ${error.message}`, 'error');
+      return saved;
+    }
+    saved += chunk.length;
+  }
+  return saved;
+}
+
+async function fetchLocationsFromMarvelsnapzone() {
+  try {
+    const resp = await fetch(MARVELSNAPZONE_LOCATIONS_URL, {
+      headers: { 'Accept': 'application/json' },
+    });
+    if (!resp.ok) return { ok: false, error: `HTTP ${resp.status}` };
+    const json = await resp.json();
+    const locations = json?.success?.locations || json?.success?.cards;
+    if (!Array.isArray(locations)) return { ok: false, error: 'Unexpected JSON shape' };
+    return { ok: true, locations };
+  } catch (err) {
+    return { ok: false, error: err.message || 'Network/CORS error' };
+  }
+}
+
+function parseLocationsFromPasted(text) {
+  try {
+    const json = JSON.parse(text);
+    const locations = Array.isArray(json)
+      ? json
+      : json?.success?.locations || json?.success?.cards || json?.locations || json?.cards;
+    if (!Array.isArray(locations)) return { ok: false, error: 'JSON missing locations array' };
+    return { ok: true, locations };
   } catch (err) {
     return { ok: false, error: 'Invalid JSON: ' + err.message };
   }
@@ -2489,6 +2845,7 @@ function renderShell() {
     { id: 'bracket', label: 'Bracket', icon: '⌬' },
     { id: 'decks', label: 'Deck Registry', icon: '❖' },
     { id: 'cards', label: 'Card Library', icon: '❏' },
+    { id: 'locations', label: 'Locations', icon: '◈' },
   ];
 
   el('app').innerHTML = `
@@ -2514,6 +2871,7 @@ function renderShell() {
         </nav>
         <div class="sidebar-footer">
           <div style="margin-bottom:6px;">v1.0 · <a href="#" id="logout-link">Lock</a></div>
+          <div style="margin-bottom:6px;">Created by CJ</div>
           <div>Connected to Supabase</div>
         </div>
       </aside>
@@ -2565,6 +2923,7 @@ function renderRoute() {
     case 'bracket': renderBracket(main); break;
     case 'decks': renderDecks(main); break;
     case 'cards': renderCardLibrary(main); break;
+    case 'locations': renderLocationLibrary(main); break;
     default: renderDashboard(main);
   }
 }
@@ -2737,7 +3096,7 @@ function openNewTournamentModal() {
     <div class="form-row" style="margin-top:12px;">
       <div class="field"><label>Date</label><input type="date" id="nt-date" value="${today}" /></div>
       <div class="field">
-        <label>Format</label>
+        <label>Format <span class="help-hint" title="Swiss: everyone plays the same number of rounds, paired against opponents with similar records. Best for 8+ players. Single Elim: pure bracket, lose once and you're out.">?</span></label>
         <select id="nt-format">
           <option value="swiss">Swiss</option>
           <option value="single_elim">Single Elimination</option>
@@ -2746,31 +3105,52 @@ function openNewTournamentModal() {
         </select>
       </div>
     </div>
-    <div class="form-row">
-      <div class="field"><label>Rounds</label><input type="number" id="nt-rounds" value="4" min="1" max="20" /></div>
+    <div class="form-row" id="nt-swiss-fields">
       <div class="field">
-        <label>Best of</label>
-        <select id="nt-bo"><option value="1">BO1</option><option value="3" selected>BO3</option><option value="5">BO5</option></select>
+        <label>Rounds <span class="help-hint" title="How many Swiss rounds before top cut. Common: 3 rounds for 8 players, 4 for 16, 5 for 32.">?</span></label>
+        <input type="number" id="nt-rounds" value="4" min="1" max="20" />
+      </div>
+      <div class="field">
+        <label>Best of <span class="help-hint" title="Games per match. BO3 is standard for Snap tournaments: first to 2 game wins takes the match.">?</span></label>
+        <select id="nt-bo"><option value="1">Best of 1 (1 game)</option><option value="3" selected>Best of 3 (2 game wins)</option><option value="5">Best of 5 (3 game wins)</option></select>
       </div>
     </div>
-    <div class="form-row">
+    <div class="form-row" id="nt-topcut-row">
       <div class="field">
-        <label>Top Cut</label>
+        <label>Top Cut <span class="help-hint" title="After Swiss rounds, top N players advance to a single-elimination bracket. Leave at None for pure Swiss.">?</span></label>
         <select id="nt-topcut">
-          <option value="0">None</option>
-          <option value="2">Top 2 (Final)</option>
-          <option value="4">Top 4</option>
-          <option value="8" selected>Top 8</option>
+          <option value="0">None (pure Swiss)</option>
+          <option value="2">Top 2 (Final only)</option>
+          <option value="4">Top 4 (Semifinals)</option>
+          <option value="8" selected>Top 8 (Quarterfinals)</option>
           <option value="16">Top 16</option>
         </select>
       </div>
-      <div class="field"><label>Bye Cube Value</label><input type="number" id="nt-bye" value="8" min="0" max="99" /></div>
+      <div class="field">
+        <label>Bye Cube Value <span class="help-hint" title="When there's an odd number of players, one gets a free win (bye) each round. This sets how many cubes to credit them, used for tiebreakers. 8 is standard.">?</span></label>
+        <input type="number" id="nt-bye" value="8" min="0" max="99" />
+      </div>
     </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" data-close>Cancel</button>
       <button class="btn btn-primary" id="nt-create">Create</button>
     </div>
   `, (backdrop) => {
+    // Hide Rounds + Top Cut rows for Single Elim (bracket determined by player count)
+    function updateFormatFields() {
+      const fmt = backdrop.querySelector('#nt-format').value;
+      const swissFields = backdrop.querySelector('#nt-swiss-fields');
+      const topcutRow = backdrop.querySelector('#nt-topcut-row');
+      if (fmt === 'single_elim') {
+        swissFields.style.display = 'none';
+        topcutRow.style.display = 'none';
+      } else {
+        swissFields.style.display = '';
+        topcutRow.style.display = '';
+      }
+    }
+    backdrop.querySelector('#nt-format').addEventListener('change', updateFormatFields);
+    updateFormatFields();
     backdrop.querySelector('#nt-create').addEventListener('click', async () => {
       const name = backdrop.querySelector('#nt-name').value.trim();
       if (!name) return toast('Name required', 'error');
@@ -3032,7 +3412,12 @@ function renderPlayers(main) {
             ${state.players.map(p => `
               <tr>
                 <td>${p.seed ?? '—'}</td>
-                <td><strong>${esc(p.name)}</strong></td>
+                <td>
+                  <span class="player-row">
+                    ${renderAvatar(p, 'md')}
+                    <span><strong>${esc(p.name)}</strong></span>
+                  </span>
+                </td>
                 <td class="muted">${esc(p.alias || '')}</td>
                 <td>
                   ${canEdit ? `
@@ -3194,16 +3579,42 @@ function openEditPlayerModal(id) {
       <div class="field"><label>Alias</label><input type="text" id="ep-alias" value="${esc(p.alias || '')}" /></div>
       <div class="field"><label>Seed</label><input type="number" id="ep-seed" value="${p.seed || ''}" /></div>
     </div>
+    <div class="field" style="margin-top:12px;">
+      <label>Avatar</label>
+      <div class="row" style="gap:12px; align-items:center; margin-bottom:8px;">
+        <div id="ep-avatar-preview"></div>
+      </div>
+      <div id="ep-avatar-picker"></div>
+    </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" data-close>Cancel</button>
       <button class="btn btn-primary" id="ep-save">Save</button>
     </div>
   `, (backdrop) => {
+    let chosenAvatar = getPlayerAvatar(p);
+
+    function refreshPreview() {
+      const wrap = backdrop.querySelector('#ep-avatar-preview');
+      const nameVal = backdrop.querySelector('#ep-name').value.trim() || p.name;
+      wrap.innerHTML = renderAvatar({ name: nameVal, stats: { avatar: chosenAvatar } }, 'lg');
+    }
+
+    mountAvatarPicker(backdrop.querySelector('#ep-avatar-picker'), {
+      initial: chosenAvatar,
+      onSelect: (avatar) => { chosenAvatar = avatar; refreshPreview(); }
+    });
+    refreshPreview();
+    backdrop.querySelector('#ep-name').addEventListener('input', refreshPreview);
+
     backdrop.querySelector('#ep-save').addEventListener('click', async () => {
+      const newStats = { ...(p.stats || {}) };
+      if (chosenAvatar) newStats.avatar = chosenAvatar;
+      else delete newStats.avatar;
       await updatePlayer(p.id, {
         name: backdrop.querySelector('#ep-name').value.trim(),
         alias: backdrop.querySelector('#ep-alias').value.trim() || null,
-        seed: parseInt(backdrop.querySelector('#ep-seed').value) || null
+        seed: parseInt(backdrop.querySelector('#ep-seed').value) || null,
+        stats: newStats,
       });
       backdrop.remove();
       await loadTournamentData(state.activeTournamentId);
@@ -3473,7 +3884,9 @@ function renderPairingCard(p, readOnly) {
         <div class="table-num">T${p.table_number || '-'}</div>
         <div class="pairing-players">
           <div class="pairing-player">
-            <div class="name">${esc(p1?.name || 'Unknown')}</div>
+            <div class="name">
+              <span class="player-row">${renderAvatar(p1, 'sm')}<span>${esc(p1?.name || 'Unknown')}</span></span>
+            </div>
             <div class="record">${r1 ? `${r1.wins}-${r1.losses}${r1.draws ? '-' + r1.draws : ''}` : ''}</div>
           </div>
           <div class="pairing-vs">BYE</div>
@@ -3500,12 +3913,16 @@ function renderPairingCard(p, readOnly) {
       <div>
         <div class="pairing-players">
           <div class="pairing-player">
-            <div class="name">${esc(p1?.name || 'Unknown')}</div>
+            <div class="name">
+              <span class="player-row">${renderAvatar(p1, 'sm')}<span>${esc(p1?.name || 'Unknown')}</span></span>
+            </div>
             <div class="record">${r1 ? `${r1.wins}-${r1.losses}${r1.draws ? '-' + r1.draws : ''} · ${fmtCubeDiff(r1.cubesWon - r1.cubesLost)}` : ''}</div>
           </div>
           <div class="pairing-vs">VS</div>
           <div class="pairing-player right">
-            <div class="name">${esc(p2?.name || 'Unknown')}</div>
+            <div class="name">
+              <span class="player-row" style="flex-direction:row-reverse;">${renderAvatar(p2, 'sm')}<span>${esc(p2?.name || 'Unknown')}</span></span>
+            </div>
             <div class="record">${r2 ? `${r2.wins}-${r2.losses}${r2.draws ? '-' + r2.draws : ''} · ${fmtCubeDiff(r2.cubesWon - r2.cubesLost)}` : ''}</div>
           </div>
         </div>
@@ -3731,9 +4148,14 @@ function renderStandings(main) {
               <tr>
                 <td class="rank-${s.rank <= 3 ? s.rank : ''}"><strong>${s.rank}</strong></td>
                 <td>
-                  <strong>${esc(s.player.name)}</strong>
-                  ${s.player.alias ? `<span class="muted"> · ${esc(s.player.alias)}</span>` : ''}
-                  ${s.player.dropped ? ' <span class="badge red">dropped</span>' : ''}
+                  <span class="player-row">
+                    ${renderAvatar(s.player, 'sm')}
+                    <span>
+                      <strong>${esc(s.player.name)}</strong>
+                      ${s.player.alias ? `<span class="muted"> · ${esc(s.player.alias)}</span>` : ''}
+                      ${s.player.dropped ? ' <span class="badge red">dropped</span>' : ''}
+                    </span>
+                  </span>
                 </td>
                 <td>${s.wins}-${s.losses}${s.draws ? '-' + s.draws : ''}</td>
                 <td>${s.matchPoints}</td>
@@ -3797,11 +4219,11 @@ function renderBracket(main) {
                   return `
                     <div class="bracket-match ${r.winner ? 'complete' : ''}" data-bracket-match="${p.id}" style="cursor:pointer;">
                       <div class="bracket-slot ${r.winner === 'player1' ? 'winner' : ''} ${!p1 ? 'empty' : ''}">
-                        <span>${esc(p1?.name || 'TBD')}</span>
+                        <span class="player-row">${p1 ? renderAvatar(p1, 'sm') : ''}<span>${esc(p1?.name || 'TBD')}</span></span>
                         <strong>${r.cubes1 ?? ''}</strong>
                       </div>
                       <div class="bracket-slot ${r.winner === 'player2' ? 'winner' : ''} ${!p2 ? 'empty' : ''}">
-                        <span>${esc(p2?.name || (p.is_bye ? 'BYE' : 'TBD'))}</span>
+                        <span class="player-row">${p2 ? renderAvatar(p2, 'sm') : ''}<span>${esc(p2?.name || (p.is_bye ? 'BYE' : 'TBD'))}</span></span>
                         <strong>${r.cubes2 ?? ''}</strong>
                       </div>
                     </div>
@@ -4086,118 +4508,330 @@ function exportStandingsCsv() {
 }
 
 // ============================================================
-// UI: CARD LIBRARY
+// UI: CARD LIBRARY (Cards only; Locations has its own page)
 // ============================================================
 let _cardLibrarySearch = '';
-let _cardLibraryFilter = 'all'; // all, released, unreleased
+let _cardLibraryCost = 'any';  // any | 0 | 1 | 2 | 3 | 4 | 5 | 6+
+let _cardLibraryAbility = 'any';  // any | on-reveal | ongoing | end-of-turn | start-of-turn | activate | no-ability | other
+let _cardLibrarySynergy = 'any';  // any | <tag>
+let _cardLibrarySort = 'cost-asc';  // cost-asc | cost-desc | name-asc | power-asc | power-desc
 
 function renderCardLibrary(main) {
   const lastSync = state.cards.length > 0
     ? state.cards.map(c => c.updated_at).sort().pop()
     : null;
 
-  const filtered = state.cards.filter(c => {
-    if (_cardLibraryFilter === 'released' && c.status !== 'released') return false;
-    if (_cardLibraryFilter === 'unreleased' && c.status === 'released') return false;
+  // Only released cards appear in the library
+  const released = state.cards.filter(c => c.status === 'released');
+
+  // Apply filters
+  const filtered = released.filter(c => {
+    if (_cardLibraryCost !== 'any') {
+      const cost = c.cost == null ? -1 : c.cost;
+      if (_cardLibraryCost === '6+') { if (cost < 6) return false; }
+      else { if (cost !== parseInt(_cardLibraryCost)) return false; }
+    }
+
+    if (_cardLibraryAbility !== 'any') {
+      if (getAbilityType(c) !== _cardLibraryAbility) return false;
+    }
+
+    if (_cardLibrarySynergy !== 'any') {
+      const tags = c.tags || [];
+      if (!tags.includes(_cardLibrarySynergy)) return false;
+    }
+
     if (_cardLibrarySearch) {
       const q = _cardLibrarySearch.toLowerCase();
-      return (c.name || '').toLowerCase().includes(q)
-        || (c.carddefid || '').toLowerCase().includes(q)
-        || (c.ability || '').toLowerCase().includes(q);
+      const hay = [
+        c.name, c.carddefid, c.ability, c.source,
+        ...(c.tags || [])
+      ].join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
     }
     return true;
   });
+
+  // Sort: cost-asc default = cost ascending, then power ascending, then name
+  filtered.sort((a, b) => {
+    switch (_cardLibrarySort) {
+      case 'cost-desc': return (b.cost ?? -1) - (a.cost ?? -1) || (b.power ?? -999) - (a.power ?? -999) || a.name.localeCompare(b.name);
+      case 'name-asc': return a.name.localeCompare(b.name);
+      case 'power-asc': return (a.power ?? 999) - (b.power ?? 999) || (a.cost ?? 99) - (b.cost ?? 99) || a.name.localeCompare(b.name);
+      case 'power-desc': return (b.power ?? -999) - (a.power ?? -999) || (b.cost ?? -1) - (a.cost ?? -1) || a.name.localeCompare(b.name);
+      default: // cost-asc
+        return (a.cost ?? 99) - (b.cost ?? 99) || (a.power ?? 999) - (b.power ?? 999) || a.name.localeCompare(b.name);
+    }
+  });
+
+  // Synergy tags only from released cards
+  const synergyTags = collectCardTags(released);
 
   main.innerHTML += `
     <div class="main-header">
       <div>
         <h1>Card Library</h1>
         <div class="muted">
-          ${state.cards.length} cards${lastSync ? ` · synced ${new Date(lastSync).toLocaleString()}` : ' · never synced'}
+          ${released.length} cards
+          ${lastSync ? ` · synced ${new Date(lastSync).toLocaleString()}` : ' · never synced'}
         </div>
       </div>
       <div class="row">
         <button class="btn btn-primary" id="sync-cards">Sync from Marvelsnapzone</button>
         <button class="btn" id="paste-cards">Paste JSON</button>
+        ${state.cards.length > 0 ? `<button class="btn btn-danger btn-sm" id="clear-cards">Clear Library</button>` : ''}
       </div>
     </div>
 
-    ${state.cards.length === 0 ? `
+    ${released.length === 0 ? `
       <div class="card">
         <div class="empty-state">
           <h3>No cards yet</h3>
           <p>Sync the library so players can register decks with visual previews.</p>
-          <p class="muted" style="font-size:0.82rem; margin-top:12px;">
-            The app fetches from marvelsnapzone.com directly. If CORS blocks the request, use Paste JSON and curl it yourself:
-          </p>
-          <pre class="sql" style="text-align:left; margin-top:8px;">curl '${MARVELSNAPZONE_URL}' -H 'Accept: application/json' \\
-  -H 'User-Agent: Mozilla/5.0' &gt; cards.json</pre>
         </div>
       </div>
     ` : `
-      <div class="library-search">
-        <input type="text" id="lib-search" placeholder="Search by name, CardDefId, or ability..." value="${esc(_cardLibrarySearch)}" />
-        <select id="lib-filter">
-          <option value="all" ${_cardLibraryFilter === 'all' ? 'selected' : ''}>All cards</option>
-          <option value="released" ${_cardLibraryFilter === 'released' ? 'selected' : ''}>Released</option>
-          <option value="unreleased" ${_cardLibraryFilter === 'unreleased' ? 'selected' : ''}>Unreleased</option>
-        </select>
-        <span class="muted" style="align-self:center; font-size:0.85rem;">${filtered.length} shown</span>
+      <div class="filter-grid">
+        <div class="field" style="grid-column: 1 / -1;">
+          <input type="text" id="lib-search" placeholder="Search name, ability, or tag..." value="${esc(_cardLibrarySearch)}" />
+        </div>
+
+        <div class="field">
+          <label>Cost <span class="help-hint" title="Energy cost to play the card">?</span></label>
+          <select id="lib-cost">
+            ${['any', '0', '1', '2', '3', '4', '5', '6+'].map(v => `<option value="${v}" ${_cardLibraryCost === v ? 'selected' : ''}>${v === 'any' ? 'Any cost' : v}</option>`).join('')}
+          </select>
+        </div>
+
+        <div class="field">
+          <label>Ability Type <span class="help-hint" title="On Reveal triggers when played. Ongoing is always active. End/Start of Turn triggers at phase change.">?</span></label>
+          <select id="lib-ability">
+            ${[
+              ['any', 'Any ability type'],
+              ['on-reveal', 'On Reveal'],
+              ['ongoing', 'Ongoing'],
+              ['end-of-turn', 'End of Turn'],
+              ['start-of-turn', 'Start of Turn'],
+              ['activate', 'Activate'],
+              ['no-ability', 'No ability'],
+              ['other', 'Other / Triggered'],
+            ].map(([v, l]) => `<option value="${v}" ${_cardLibraryAbility === v ? 'selected' : ''}>${l}</option>`).join('')}
+          </select>
+        </div>
+
+        <div class="field">
+          <label>Synergy / Archetype <span class="help-hint" title="Tags like Destroy, Discard, Move, etc. (from Marvelsnapzone)">?</span></label>
+          <select id="lib-synergy">
+            <option value="any">Any tag</option>
+            ${synergyTags.map(t => `<option value="${esc(t.tag)}" ${_cardLibrarySynergy === t.tag ? 'selected' : ''}>${esc(t.tag)} (${t.count})</option>`).join('')}
+          </select>
+        </div>
+
+        <div class="field">
+          <label>Sort</label>
+          <select id="lib-sort">
+            <option value="cost-asc" ${_cardLibrarySort === 'cost-asc' ? 'selected' : ''}>Cost low→high, then power</option>
+            <option value="cost-desc" ${_cardLibrarySort === 'cost-desc' ? 'selected' : ''}>Cost high→low, then power</option>
+            <option value="power-asc" ${_cardLibrarySort === 'power-asc' ? 'selected' : ''}>Power low→high</option>
+            <option value="power-desc" ${_cardLibrarySort === 'power-desc' ? 'selected' : ''}>Power high→low</option>
+            <option value="name-asc" ${_cardLibrarySort === 'name-asc' ? 'selected' : ''}>Name A→Z</option>
+          </select>
+        </div>
+
+        <div class="field" style="justify-content:flex-end;">
+          <label>&nbsp;</label>
+          <button class="btn btn-ghost" id="lib-reset">Reset filters</button>
+        </div>
+      </div>
+
+      <div class="row" style="margin-bottom:14px;">
+        <span class="muted" style="font-size:0.88rem;">${filtered.length} shown</span>
       </div>
 
       <div class="card-grid">
-        ${filtered.slice(0, 200).map(c => renderCardTile(c.carddefid)).join('')}
+        ${filtered.map(c => `
+          <div data-card-detail="${esc(c.carddefid)}">
+            ${renderCardTile(c.carddefid)}
+          </div>
+        `).join('')}
       </div>
-      ${filtered.length > 200 ? `
-        <p class="muted center mt-md">Showing first 200. Refine the search to see specific cards.</p>
-      ` : ''}
     `}
   `;
 
-  el('sync-cards')?.addEventListener('click', syncCardsFromApi);
+  el('sync-cards')?.addEventListener('click', syncAllFromApi);
   el('paste-cards')?.addEventListener('click', openPasteCardsModal);
+  el('clear-cards')?.addEventListener('click', () => {
+    confirm(`Clear all ${state.cards.length} cards from the library? You'll need to re-sync to use deck previews.`, async () => {
+      const { error } = await state.supabase.from('cards').delete().neq('carddefid', '');
+      if (error) return toast('Clear failed: ' + error.message, 'error');
+      toast('Card library cleared', 'success');
+      await loadCards();
+      renderRoute();
+    }, { danger: true, okLabel: 'Clear All' });
+  });
+
   el('lib-search')?.addEventListener('input', (e) => {
     _cardLibrarySearch = e.target.value;
-    // Debounce: just rerender
     clearTimeout(window._libSearchTimer);
     window._libSearchTimer = setTimeout(() => renderRoute(), 200);
   });
-  el('lib-filter')?.addEventListener('change', (e) => {
-    _cardLibraryFilter = e.target.value;
+  el('lib-cost')?.addEventListener('change', (e) => { _cardLibraryCost = e.target.value; renderRoute(); });
+  el('lib-ability')?.addEventListener('change', (e) => { _cardLibraryAbility = e.target.value; renderRoute(); });
+  el('lib-synergy')?.addEventListener('change', (e) => { _cardLibrarySynergy = e.target.value; renderRoute(); });
+  el('lib-sort')?.addEventListener('change', (e) => { _cardLibrarySort = e.target.value; renderRoute(); });
+  el('lib-reset')?.addEventListener('click', () => {
+    _cardLibrarySearch = '';
+    _cardLibraryCost = 'any';
+    _cardLibraryAbility = 'any';
+    _cardLibrarySynergy = 'any';
+    _cardLibrarySort = 'cost-asc';
     renderRoute();
+  });
+
+  document.querySelectorAll('[data-card-detail]').forEach(t => {
+    t.addEventListener('click', () => openCardDetailModal(t.dataset.cardDetail, 'card'));
   });
 
   attachTournamentPicker();
 }
 
-async function syncCardsFromApi() {
-  toast('Fetching card data...', 'info');
-  const result = await fetchCardsFromMarvelsnapzone();
-  if (!result.ok) {
-    toast(`Fetch failed: ${result.error}. Use Paste JSON instead.`, 'error');
-    openPasteCardsModal();
-    return;
+function renderLocationLibrary(main) {
+  const locs = (state.locations || []).filter(l => !l.status || l.status === 'released' || l.status === 'Released');
+  const sorted = [...locs].sort((a, b) => a.name.localeCompare(b.name));
+  main.innerHTML += `
+    <div class="main-header">
+      <div>
+        <h1>Locations</h1>
+        <div class="muted">${sorted.length} locations</div>
+      </div>
+      <div class="row">
+        <button class="btn btn-primary" id="sync-cards">Sync All</button>
+        <button class="btn" id="paste-locations">Paste Locations JSON</button>
+        ${(state.locations || []).length > 0 ? `<button class="btn btn-danger btn-sm" id="clear-locations">Clear Library</button>` : ''}
+      </div>
+    </div>
+
+    ${sorted.length === 0 ? `
+      <div class="card">
+        <div class="empty-state">
+          <h3>No locations yet</h3>
+          <p>Click Sync All to fetch both cards and locations from Marvelsnapzone.</p>
+          <p class="muted" style="font-size:0.82rem; margin-top:12px;">
+            If the fetch is blocked, open
+            <a href="${MARVELSNAPZONE_LOCATIONS_URL}" target="_blank">this URL</a>
+            in a new tab, select all (Ctrl+A), copy (Ctrl+C), and paste via the button above.
+          </p>
+        </div>
+      </div>
+    ` : `
+      <div class="location-grid">
+        ${sorted.map(loc => `
+          <div class="location-tile" data-location-detail="${esc(loc.carddefid)}" title="${esc(loc.name)}${loc.ability ? ' — ' + loc.ability.replace(/<[^>]*>/g, '') : ''}">
+            <img src="${esc(loc.art || '')}" alt="${esc(loc.name)}" loading="lazy" onerror="this.style.opacity='0.2'" />
+            <div class="name-strip">${esc(loc.name)}</div>
+          </div>
+        `).join('')}
+      </div>
+    `}
+  `;
+
+  el('sync-cards')?.addEventListener('click', syncAllFromApi);
+  el('paste-locations')?.addEventListener('click', openPasteLocationsModal);
+  el('clear-locations')?.addEventListener('click', () => {
+    confirm(`Clear all ${(state.locations || []).length} locations?`, async () => {
+      const { error } = await state.supabase.from('locations').delete().neq('carddefid', '');
+      if (error) return toast('Clear failed: ' + error.message, 'error');
+      toast('Locations cleared', 'success');
+      await loadLocations();
+      renderRoute();
+    }, { danger: true, okLabel: 'Clear All' });
+  });
+  document.querySelectorAll('[data-location-detail]').forEach(t => {
+    t.addEventListener('click', () => openCardDetailModal(t.dataset.locationDetail, 'location'));
+  });
+  attachTournamentPicker();
+}
+
+
+function openCardDetailModal(carddefid, kind = 'card') {
+  const entity = kind === 'location'
+    ? (state.locations || []).find(l => l.carddefid === carddefid)
+    : lookupCard(carddefid);
+  if (!entity) return;
+  const abilityText = (entity.ability || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  const imgStyle = kind === 'location'
+    ? 'width:100%; aspect-ratio:3/2; object-fit:cover; border-radius:8px; display:block;'
+    : 'width:100%; border-radius:8px; display:block;';
+  openModal(`
+    <h2>${esc(entity.name)}</h2>
+    <div class="detail-grid" style="margin-top:12px;">
+      <div>
+        <img src="${esc(entity.art || '')}" alt="${esc(entity.name)}" style="${imgStyle}" onerror="this.style.opacity='0.2'" />
+      </div>
+      <div>
+        ${kind === 'card' ? `
+          <div class="row" style="gap:16px; margin-bottom:12px;">
+            <div><span class="muted" style="font-size:0.72rem; text-transform:uppercase;">Cost</span><div style="font-family:'Barlow Condensed',sans-serif; font-size:1.6rem; font-weight:700; color:var(--ember);">${entity.cost ?? '—'}</div></div>
+            <div><span class="muted" style="font-size:0.72rem; text-transform:uppercase;">Power</span><div style="font-family:'Barlow Condensed',sans-serif; font-size:1.6rem; font-weight:700; color:var(--gold);">${entity.power ?? '—'}</div></div>
+            <div><span class="muted" style="font-size:0.72rem; text-transform:uppercase;">Type</span><div>${esc(entity.type || '—')}</div></div>
+          </div>
+        ` : ''}
+        <h4 style="margin-bottom:6px;">Ability</h4>
+        <p style="font-size:0.9rem; color:var(--text); margin-bottom:12px;">${abilityText ? esc(abilityText) : '<span class="muted">No ability</span>'}</p>
+        ${entity.source ? `<p style="font-size:0.8rem;"><span class="muted">Source:</span> ${esc(entity.source)}</p>` : ''}
+        ${entity.status ? `<p style="font-size:0.8rem;"><span class="muted">Status:</span> ${esc(entity.status)}</p>` : ''}
+        ${entity.tags && entity.tags.length ? `
+          <div style="margin-top:10px;">
+            ${entity.tags.map(t => `<span class="pill-tag">${esc(t)}</span>`).join('')}
+          </div>
+        ` : ''}
+        <div style="margin-top:10px; font-family:'JetBrains Mono',monospace; font-size:0.72rem; color:var(--dim);">
+          ${esc(entity.carddefid)}
+        </div>
+      </div>
+    </div>
+    <div class="modal-actions"><button class="btn" data-close>Close</button></div>
+  `);
+}
+
+// ----- Sync + paste flows -----
+
+async function syncAllFromApi() {
+  toast('Fetching cards...', 'info');
+  const cardsResult = await fetchCardsFromMarvelsnapzone();
+  if (cardsResult.ok) {
+    const recs = cardsResult.cards.map(compactCardRecord).filter(c => c.carddefid);
+    toast(`Got ${recs.length} cards. Saving...`, 'info');
+    await upsertCards(recs);
+    await loadCards();
+    toast('Cards synced', 'success');
+  } else {
+    toast(`Cards fetch failed (${cardsResult.error}). Use Paste JSON.`, 'error');
   }
-  const records = result.cards.map(compactCardRecord).filter(c => c.carddefid);
-  toast(`Got ${records.length} cards. Saving...`, 'info');
-  const saved = await upsertCards(records);
-  toast(`Saved ${saved} cards to library`, 'success');
-  await loadCards();
+
+  toast('Fetching locations...', 'info');
+  const locResult = await fetchLocationsFromMarvelsnapzone();
+  if (locResult.ok) {
+    const recs = locResult.locations.map(compactLocationRecord).filter(l => l.carddefid);
+    await upsertLocations(recs);
+    await loadLocations();
+    toast(`Saved ${recs.length} locations`, 'success');
+  } else {
+    toast(`Locations fetch failed (${locResult.error}). Use Paste Locations JSON.`, 'info');
+  }
+
   renderRoute();
 }
 
 function openPasteCardsModal() {
   openModal(`
-    <h2>Paste Card JSON</h2>
+    <h2>Paste Cards JSON</h2>
     <p class="muted" style="font-size:0.88rem; margin-bottom:12px;">
-      Paste the full response from <code>marvelsnapzone.com/getinfo/?searchtype=cards&amp;searchcardstype=true</code>, or an array of card objects.
+      Open <a href="${MARVELSNAPZONE_URL}" target="_blank">this URL</a> in a new tab, select all (Ctrl+A), copy (Ctrl+C), and paste below.
     </p>
-    <p class="muted" style="font-size:0.8rem; margin-bottom:12px;">Quick way:</p>
-    <pre class="sql" style="font-size:0.72rem;">curl '${MARVELSNAPZONE_URL}' \\
-  -H 'User-Agent: Mozilla/5.0' &gt; cards.json</pre>
     <div class="field" style="margin-top:12px;">
-      <label>JSON</label>
-      <textarea id="pc-json" rows="8" placeholder='{"success":{"cards":[...]}} or [{"carddefid":"..."}]'></textarea>
+      <label>Cards JSON</label>
+      <textarea id="pc-json" rows="8" placeholder='{"success":{"cards":[...]}}'></textarea>
     </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" data-close>Cancel</button>
@@ -4214,6 +4848,36 @@ function openPasteCardsModal() {
       toast(`Saved ${saved} cards`, 'success');
       b.remove();
       await loadCards();
+      renderRoute();
+    });
+  });
+}
+
+function openPasteLocationsModal() {
+  openModal(`
+    <h2>Paste Locations JSON</h2>
+    <p class="muted" style="font-size:0.88rem; margin-bottom:12px;">
+      Open <a href="${MARVELSNAPZONE_LOCATIONS_URL}" target="_blank">this URL</a> in a new tab, select all (Ctrl+A), copy (Ctrl+C), and paste below.
+    </p>
+    <div class="field" style="margin-top:12px;">
+      <label>Locations JSON</label>
+      <textarea id="pl-json" rows="8" placeholder='{"success":{"locations":[...]}}'></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" data-close>Cancel</button>
+      <button class="btn btn-primary" id="pl-save">Import</button>
+    </div>
+  `, (b) => {
+    b.querySelector('#pl-save').addEventListener('click', async () => {
+      const text = b.querySelector('#pl-json').value;
+      const r = parseLocationsFromPasted(text);
+      if (!r.ok) return toast(r.error, 'error');
+      const records = r.locations.map(compactLocationRecord).filter(l => l.carddefid);
+      toast(`Parsed ${records.length} locations. Saving...`, 'info');
+      const saved = await upsertLocations(records);
+      toast(`Saved ${saved} locations`, 'success');
+      b.remove();
+      await loadLocations();
       renderRoute();
     });
   });
@@ -4273,6 +4937,18 @@ function renderRegistrationView() {
           <div class="field"><label>Your Name</label><input type="text" id="r-name" autofocus /></div>
           <div class="field"><label>Alias / Tag (optional)</label><input type="text" id="r-alias" /></div>
         </div>
+
+        <div class="field" style="margin-top:12px;">
+          <label>Your Avatar</label>
+          <div class="row" style="margin-bottom:8px; gap:12px; align-items:center;">
+            <div id="r-avatar-preview"></div>
+            <p class="muted" style="font-size:0.82rem; margin:0;">
+              Shown next to your name on pairings and brackets. Optional.
+            </p>
+          </div>
+          <div id="r-avatar-picker" style="margin-top:8px;"></div>
+        </div>
+
         <div class="field" style="margin-top:12px;">
           <label>Deck Code</label>
           <textarea id="r-code" rows="3" class="deck-code-input" placeholder="Paste your deck code here (starts with eyJ...)"></textarea>
@@ -4297,12 +4973,29 @@ function renderRegistrationView() {
       </div>
 
       <p class="muted center" style="font-size:0.78rem; margin-top:16px;">
-        Your deck is encrypted in the database and only revealed if the TO chooses to make it public.
+        Your deck is hidden from other players until the organizer reveals decks.
       </p>
     </div>
   `;
 
   let decodedCards = [];
+  let chosenAvatar = null;
+
+  function renderAvatarPreview() {
+    const wrap = el('r-avatar-preview');
+    if (!wrap) return;
+    const nameVal = el('r-name')?.value.trim() || 'You';
+    wrap.innerHTML = renderAvatar({ name: nameVal, stats: { avatar: chosenAvatar } }, 'lg');
+  }
+
+  mountAvatarPicker(el('r-avatar-picker'), {
+    onSelect: (avatar) => {
+      chosenAvatar = avatar;
+      renderAvatarPreview();
+    }
+  });
+  renderAvatarPreview();
+  el('r-name').addEventListener('input', renderAvatarPreview);
 
   function renderPreview() {
     const wrap = el('r-preview');
@@ -4351,12 +5044,16 @@ function renderRegistrationView() {
       if (!window.confirm(`"${name}" is already registered. Add anyway? (Use a different alias to distinguish.)`)) return;
     }
 
-    // Create player
+    // Create player with avatar
     const player = await addPlayer(state.activeTournamentId, { name, alias });
     if (!player) return;
+    if (chosenAvatar) {
+      await updatePlayer(player.id, { stats: { ...(player.stats || {}), avatar: chosenAvatar } });
+    }
     await saveDeck(state.activeTournamentId, player.id, deckname, decodedCards);
 
     // Show confirmation
+    const confirmedPlayer = { name, stats: { avatar: chosenAvatar } };
     const root = el('reg-root');
     root.innerHTML = `
       <div class="reg-container">
@@ -4366,7 +5063,10 @@ function renderRegistrationView() {
         </div>
         <div class="card">
           <div style="text-align:center; padding:24px 0;">
-            <div style="font-family:'Bebas Neue',sans-serif; font-size:3rem; color:var(--gold); letter-spacing:0.06em;">
+            <div style="display:flex; justify-content:center; margin-bottom:12px;">
+              ${renderAvatar(confirmedPlayer, 'xl')}
+            </div>
+            <div style="font-family:'Barlow Condensed',sans-serif; font-size:2.4rem; font-weight:700; color:var(--gold); letter-spacing:0.06em;">
               ${esc(name.toUpperCase())}
             </div>
             <p class="muted" style="margin-top:8px;">Registered with a ${decodedCards.length}-card deck</p>
@@ -4511,9 +5211,14 @@ function renderSpecStandings(body) {
             <tr>
               <td class="rank-${s.rank <= 3 ? s.rank : ''}"><strong>${s.rank}</strong></td>
               <td>
-                <strong>${esc(s.player.name)}</strong>
-                ${s.player.alias ? `<span class="muted"> · ${esc(s.player.alias)}</span>` : ''}
-                ${s.player.dropped ? ' <span class="badge red">dropped</span>' : ''}
+                <span class="player-row">
+                  ${renderAvatar(s.player, 'sm')}
+                  <span>
+                    <strong>${esc(s.player.name)}</strong>
+                    ${s.player.alias ? `<span class="muted"> · ${esc(s.player.alias)}</span>` : ''}
+                    ${s.player.dropped ? ' <span class="badge red">dropped</span>' : ''}
+                  </span>
+                </span>
               </td>
               <td>${s.wins}-${s.losses}${s.draws ? '-' + s.draws : ''}</td>
               <td>${s.matchPoints}</td>
@@ -4562,11 +5267,15 @@ function renderSpecPairings(body, round) {
           <div class="table-num">T${p.table_number || '-'}</div>
           <div class="pairing-players">
             <div class="pairing-player">
-              <div class="name">${esc(p1?.name || 'TBD')}</div>
+              <div class="name">
+                <span class="player-row">${renderAvatar(p1, 'sm')}<span>${esc(p1?.name || 'TBD')}</span></span>
+              </div>
             </div>
             <div class="pairing-vs">VS</div>
             <div class="pairing-player right">
-              <div class="name">${esc(p2?.name || 'TBD')}</div>
+              <div class="name">
+                <span class="player-row" style="flex-direction:row-reverse;">${renderAvatar(p2, 'sm')}<span>${esc(p2?.name || 'TBD')}</span></span>
+              </div>
             </div>
           </div>
           <div>
@@ -4613,11 +5322,11 @@ function renderSpecBracket(body) {
                 return `
                   <div class="bracket-match ${rr.winner ? 'complete' : ''}">
                     <div class="bracket-slot ${rr.winner === 'player1' ? 'winner' : ''} ${!p1 ? 'empty' : ''}">
-                      <span>${esc(p1?.name || 'TBD')}</span>
+                      <span class="player-row">${p1 ? renderAvatar(p1, 'sm') : ''}<span>${esc(p1?.name || 'TBD')}</span></span>
                       <strong>${rr.cubes1 ?? ''}</strong>
                     </div>
                     <div class="bracket-slot ${rr.winner === 'player2' ? 'winner' : ''} ${!p2 ? 'empty' : ''}">
-                      <span>${esc(p2?.name || (p.is_bye ? 'BYE' : 'TBD'))}</span>
+                      <span class="player-row">${p2 ? renderAvatar(p2, 'sm') : ''}<span>${esc(p2?.name || (p.is_bye ? 'BYE' : 'TBD'))}</span></span>
                       <strong>${rr.cubes2 ?? ''}</strong>
                     </div>
                   </div>
@@ -4700,6 +5409,7 @@ async function boot() {
       await Promise.all([
         loadTournamentData(state.activeTournamentId),
         loadCards(),
+        loadLocations(),
       ]);
     } catch (err) {
       console.error(err);
@@ -4731,8 +5441,8 @@ async function boot() {
   }
   state.authed = true;
 
-  // Load tournaments and most recent active
-  await Promise.all([loadTournaments(), loadCards()]);
+  // Load tournaments, cards, and locations
+  await Promise.all([loadTournaments(), loadCards(), loadLocations()]);
   const saved = localStorage.getItem(LS_KEYS.ACTIVE_TOURNAMENT);
   if (saved && state.tournaments.find(t => t.id === saved)) {
     state.activeTournamentId = saved;
